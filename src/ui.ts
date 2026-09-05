@@ -556,7 +556,6 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
       budgetEl.append('Budget ', h('b', {}, formatPrice(state.budget)));
       if (state.spent.length) {
         budgetEl.append(` · spent ${formatPrice(state.spent.reduce((a, s) => a + s.cost, 0))} on ${state.spent.map((s) => s.vendorName).join(', ')} · remaining `, h('b', { class: state.remaining! > 0 ? 'pos' : 'neg' }, formatPrice(state.remaining!)));
-        if (state.remaining! <= 0) budgetEl.append(h('span', { title: 'Anything else you choose today is a full-price card payment.' }, ' · budget used up: everything is full price'));
       }
     } else {
       budgetEl.textContent = 'Budget: loading…';
