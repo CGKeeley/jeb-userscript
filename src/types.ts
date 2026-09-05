@@ -116,6 +116,8 @@ export interface Row {
   imageLarge: string | null;
   vendorName: string;
   vendorLocationName: string;
+  vendorLogo: string | null;
+  vendorColor: string;
   orderId: string;
   orderHumanId: number;
   slot: string;

@@ -114,6 +114,8 @@ function row(over: Partial<Row> & { name: string; price: number }): Row {
     imageLarge: null,
     vendorName: 'V',
     vendorLocationName: '',
+    vendorLogo: null,
+    vendorColor: '#000',
     orderId: 'o',
     orderHumanId: 1,
     slot: '12:00 - 12:30',
@@ -174,6 +176,13 @@ test.describe('other filters', () => {
     expect(applyFilter(rows, { ...defaultFilter(), hideSoldOut: false })).toHaveLength(4);
     expect(applyFilter(rows, { ...defaultFilter(), slots: new Set(['12:00 - 12:30']) }).map((r) => r.name)).toEqual(['C', 'D']);
     expect(applyFilter(rows, { ...defaultFilter(), maxPrice: 10 }).map((r) => r.name)).toEqual(['B', 'D']);
+  });
+
+  test('provider filter keeps only the selected orders (OR across providers)', () => {
+    const rows = [row({ name: 'A', price: 1, orderId: 'o1' }), row({ name: 'B', price: 1, orderId: 'o2' }), row({ name: 'C', price: 1, orderId: 'o3' })];
+    expect(applyFilter(rows, { ...defaultFilter(), vendors: new Set(['o1', 'o3']) }).map((r) => r.name)).toEqual(['A', 'C']);
+    expect(applyFilter(rows, { ...defaultFilter(), vendors: new Set() })).toHaveLength(0);
+    expect(applyFilter(rows, { ...defaultFilter(), vendors: null })).toHaveLength(3);
   });
 });
 

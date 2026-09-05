@@ -46,6 +46,7 @@ test.describe('Choose an item from the comparison (Tuesday)', () => {
 
     const overlay = page.locator('#jefb-compare-host');
     await expect(overlay.locator('.status')).not.toContainText('loading', { timeout: 30_000 });
+    await overlay.locator('.seg label', { hasText: 'Table' }).click();
 
     // Set a filter so we can check it survives the round trip.
     await overlay.locator('label.chk', { hasText: 'Pescatarian' }).click();

@@ -33,6 +33,7 @@ test.describe('bookmarklet on /my-meals', () => {
     }
     await expect(overlay).toBeAttached();
     await expect(overlay.locator('.status')).not.toContainText('loading', { timeout: 30_000 });
+    if ((await overlay.locator('table').count()) === 0) await overlay.locator('.seg label', { hasText: 'Table' }).click();
     return overlay;
   }
 
@@ -47,6 +48,7 @@ test.describe('bookmarklet on /my-meals', () => {
     page.on('framenavigated', (f) => f === page.mainFrame() && console.log(`[live] navigated ${new Date().toISOString()} ${f.url()}`));
     await page.goto(`${BASE}/my-meals`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('li[test-id="days"]').first()).toBeVisible({ timeout: 30_000 });
+    await page.evaluate(() => localStorage.removeItem('jefb-compare-view'));
     const consent = page.getByRole('button', { name: 'Accept All' });
     if (await consent.isVisible().catch(() => false)) {
       // CookieYes reloads the page shortly after consent is given; wait that out.
@@ -91,6 +93,9 @@ test.describe('bookmarklet on /my-meals', () => {
     await expect(status).not.toContainText('loading', { timeout: 30_000 });
     await expect(status).not.toContainText('failed');
     await expect(overlay.locator('header .meta')).toContainText(`${expected} providers`);
+    // Tiles are the default view; the rest of this test reads the table.
+    await expect(overlay.locator('.tiles')).toBeVisible();
+    await overlay.locator('.seg label', { hasText: 'Table' }).click();
 
     const rows = overlay.locator('tbody tr');
     expect(await rows.count()).toBeGreaterThan(expected); // several items per provider
@@ -142,6 +147,35 @@ test.describe('bookmarklet on /my-meals', () => {
     await expect(overlay.locator('tbody tr')).toHaveCount(rowCount);
     await expect(overlay.locator('th', { hasText: 'Price' }).locator('.arrow')).toHaveText('▲');
     await overlay.locator('select.sort').selectOption({ label: 'Price: high to low' });
+  });
+
+  test('provider checkboxes drop and restore a provider; tiles carry its logo and colour', async () => {
+    const overlay = await ensureOverlay();
+    // Reset the diet filter left by the previous test.
+    await overlay.locator('.seg label', { hasText: 'Match any' }).click();
+    for (const d of ['Vegetarian', 'Pescatarian']) {
+      const box = overlay.locator('label.chk', { hasText: d }).locator('input');
+      if (await box.isChecked()) await box.click();
+    }
+    await overlay.locator('.seg label', { hasText: 'Tiles' }).click();
+    const total = await overlay.locator('.tile').count();
+    const first = overlay.locator('label.chk.vendor').first();
+    const orderId = (await first.locator('input').getAttribute('data-order-id'))!;
+    const ofVendor = await overlay.locator(`.tile[data-order-id="${orderId}"]`).count();
+    expect(ofVendor).toBeGreaterThan(0);
+    await expect(overlay.locator(`.tile[data-order-id="${orderId}"] .logo`).first()).toBeVisible();
+    const colour = await overlay.locator(`.tile[data-order-id="${orderId}"]`).first().evaluate((e) => getComputedStyle(e).borderTopColor);
+    const otherColour = await overlay.locator(`.tile:not([data-order-id="${orderId}"])`).first().evaluate((e) => getComputedStyle(e).borderTopColor);
+    expect(colour).not.toEqual(otherColour);
+
+    await first.click();
+    await expect(overlay.locator('.tile')).toHaveCount(total - ofVendor);
+    await expect(overlay.locator(`.tile[data-order-id="${orderId}"]`)).toHaveCount(0);
+    await overlay.locator('.group .quick', { hasText: 'none' }).click();
+    await expect(overlay.locator('.tile')).toHaveCount(0);
+    await overlay.locator('.group .quick', { hasText: 'all' }).click();
+    await expect(overlay.locator('.tile')).toHaveCount(total);
+    await overlay.locator('.seg label', { hasText: 'Table' }).click();
   });
 
   test('search and sort by name work; Escape closes', async () => {

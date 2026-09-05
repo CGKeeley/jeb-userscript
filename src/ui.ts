@@ -9,6 +9,7 @@ import {
   flattenSummary,
   formatPrice,
   sortRows,
+  vendorColor,
   type FilterState,
   type SortKey,
   type SortState,
@@ -89,7 +90,16 @@ td.act { text-align: right; }
 .tile .act { display: flex; justify-content: flex-end; }
 select.sort { padding: 5px 7px; border: 1px solid #d7dbe3; border-radius: 6px; font: inherit; background: #fff; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; padding: 14px 18px; }
-.tile { border: 1px solid #e4e6eb; border-radius: 10px; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
+.tile { position: relative; border: 1px solid #e4e6eb; border-top: 5px solid var(--vc, #e4e6eb); border-radius: 10px; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
+.tile .logo { position: absolute; right: 10px; bottom: 10px; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #fff; border: 3px solid var(--vc, #ccc); box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+.tile .logo.text { display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; background: var(--vc, #999); }
+.tile .vendor a { color: var(--vc, #0a5bd6); }
+.tile .act { padding-right: 52px; }
+tr[data-order-id] td.item { border-left: 5px solid var(--vc, transparent); }
+.vlogo { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; vertical-align: -4px; margin-right: 4px; border: 1px solid #d7dbe3; background: #fff; }
+label.chk.vendor { border-color: var(--vc); }
+label.chk.vendor:has(input:checked) { background: var(--vc); border-color: var(--vc); color: #fff; }
+.group .quick { color: #0a5bd6; cursor: pointer; font-size: 12.5px; text-decoration: underline; }
 .tile:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); }
 .tile .photo { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #f0f1f4; display: block; }
 .tile .nophoto { width: 100%; aspect-ratio: 4 / 3; background: #f0f1f4; display: flex; align-items: center; justify-content: center; color: #9aa1ae; font-size: 12px; }
@@ -153,7 +163,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   style.textContent = CSS;
   shadow.append(style);
 
-  const options: { option: EaterOption; slot: string }[] = [];
+  const options: { option: EaterOption; slot: string; color: string }[] = [];
   const soldOutVendors: string[] = [];
   for (const cart of opts.carts) {
     for (const o of cart.eaterOptions) {
@@ -163,7 +173,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
         continue;
       }
       const slot = opts.slotLabels.get(o.orderHumanId) ?? new Date(cart.requestedDeliveryDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      options.push({ option: o, slot });
+      options.push({ option: o, slot, color: vendorColor(options.length) });
     }
   }
   const slotNames = [...new Set(options.map((o) => o.slot))];
@@ -175,7 +185,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     loaded: 0,
     errors: [] as string[],
     budget: null as number | null,
-    view: (safeGet('jefb-compare-view') === 'tiles' ? 'tiles' : 'table') as 'table' | 'tiles',
+    view: (safeGet('jefb-compare-view') === 'table' ? 'table' : 'tiles') as 'table' | 'tiles',
   };
 
   const close = () => {
@@ -245,6 +255,37 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     }),
   );
   controls.append(dietGroup);
+
+  // Provider checkboxes: all on by default; unticking removes that provider (OR across the ticked ones).
+  state.filter.vendors = new Set(options.map((o) => o.option.orderId));
+  const vendorGroup = h('div', { class: 'group' }, h('span', { class: 'title' }, 'Providers'));
+  const vendorBoxes: HTMLInputElement[] = [];
+  for (const { option: o, color } of options) {
+    const input = h('input', { type: 'checkbox', 'data-order-id': o.orderId });
+    input.checked = true;
+    input.addEventListener('change', () => {
+      if (input.checked) state.filter.vendors!.add(o.orderId);
+      else state.filter.vendors!.delete(o.orderId);
+      render();
+    });
+    vendorBoxes.push(input);
+    const label = h('label', { class: 'chk vendor', style: `--vc:${color}`, title: `${o.vendorName}${o.vendorLocationName ? ' \u00b7 ' + o.vendorLocationName : ''}` }, input);
+    const logo = o.vendorImage?.[0]?.thumbnail;
+    if (logo) label.append(h('img', { class: 'vlogo', src: logo, alt: '' }));
+    label.append(o.vendorName.split(' - ')[0]);
+    vendorGroup.append(label);
+  }
+  const setAll = (on: boolean) => {
+    for (const b of vendorBoxes) b.checked = on;
+    state.filter.vendors = new Set(on ? options.map((o) => o.option.orderId) : []);
+    render();
+  };
+  const allLink = h('span', { class: 'quick' }, 'all');
+  allLink.addEventListener('click', () => setAll(true));
+  const noneLink = h('span', { class: 'quick' }, 'none');
+  noneLink.addEventListener('click', () => setAll(false));
+  vendorGroup.append(allLink, noneLink);
+  controls.append(vendorGroup);
 
   if (slotNames.length > 1) {
     const slotGroup = h('div', { class: 'group' }, h('span', { class: 'title' }, 'Slot'));
@@ -354,7 +395,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
 
   function rowEl(r: Row): HTMLTableRowElement {
-    const tr = h('tr', { 'data-item-id': r.itemId, 'data-type': r.type });
+    const tr = h('tr', { 'data-item-id': r.itemId, 'data-type': r.type, 'data-order-id': r.orderId, style: `--vc:${r.vendorColor}` });
     const itemCell = h('td', { class: 'item' });
     if (r.image) itemCell.append(h('img', { class: 'thumb', src: r.image, alt: '', loading: 'lazy' }));
     const nameLine = h('div', { class: 'name' }, r.name);
@@ -368,7 +409,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     tr.append(itemCell);
 
     const vendorCell = h('td', { class: 'vendor' });
-    const a = h('a', { href: `/my-meals/${r.orderId}`, title: `Open ${r.vendorName} for this slot` }, r.vendorName);
+    if (r.vendorLogo) vendorCell.append(h('img', { class: 'vlogo', src: r.vendorLogo, alt: '' }));
+    const a = h('a', { href: `/my-meals/${r.orderId}`, title: `Open ${r.vendorName} for this slot`, style: `color:${r.vendorColor}` }, r.vendorName);
     vendorCell.append(a);
     const badge = capacityBadge(r.capacity);
     if (badge) vendorCell.append(badge);
@@ -391,7 +433,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
 
   function tileEl(r: Row): HTMLElement {
-    const tile = h('div', { class: 'tile', 'data-item-id': r.itemId, 'data-type': r.type });
+    const tile = h('div', { class: 'tile', 'data-item-id': r.itemId, 'data-type': r.type, 'data-order-id': r.orderId, style: `--vc:${r.vendorColor}` });
     if (r.imageLarge) tile.append(h('img', { class: 'photo', src: r.imageLarge, alt: '', loading: 'lazy' }));
     else tile.append(h('div', { class: 'nophoto' }, 'No photo'));
     const body = h('div', { class: 'body' });
@@ -425,6 +467,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     body.append(h('div', { class: 'vendor' }, h('a', { href: `/my-meals/${r.orderId}` }, r.vendorName), h('span', { class: 'slot' }, `${r.slot} \u00b7 ${r.section}`)));
     body.append(h('div', { class: 'act' }, chooseButton(r)));
     tile.append(body);
+    if (r.vendorLogo) tile.append(h('img', { class: 'logo', src: r.vendorLogo, alt: r.vendorName, title: r.vendorName }));
+    else tile.append(h('div', { class: 'logo text', title: r.vendorName }, r.vendorName.slice(0, 2).toUpperCase()));
     return tile;
   }
 
@@ -462,10 +506,10 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   document.body.append(host);
 
   // Load all menus concurrently, rendering as each arrives.
-  for (const { option, slot } of options) {
+  for (const { option, slot, color } of options) {
     fetchSummary(option.orderId)
       .then((summary) => {
-        state.rows.push(...flattenSummary(summary, option, slot));
+        state.rows.push(...flattenSummary(summary, option, slot, color));
         if (state.budget == null && summary.item.individualChoice.budget != null) state.budget = summary.item.individualChoice.budget;
       })
       .catch((e: unknown) => {

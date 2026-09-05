@@ -23,6 +23,13 @@ export const DIET_SHORT: Record<DietKey, string> = {
   halal: 'H',
 };
 
+/** Distinct colours assigned to providers in list order so the same provider is easy to spot. */
+export const VENDOR_COLORS = ['#4e79a7', '#e15759', '#59a14f', '#b07aa1', '#f28e2b', '#76b7b2', '#edc948', '#ff9da7', '#9c755f', '#1f77b4', '#2ca02c', '#8c564b', '#e377c2', '#17becf', '#bcbd22'];
+
+export function vendorColor(index: number): string {
+  return VENDOR_COLORS[index % VENDOR_COLORS.length];
+}
+
 export const EMPTY_DIET: Dietaries = {
   vegetarian: false,
   vegan: false,
@@ -108,7 +115,7 @@ function allergenList(item: BaseItem): string[] {
 }
 
 /** Flatten one vendor's summary into rows. */
-export function flattenSummary(summary: Summary, option: EaterOption, slot: string): Row[] {
+export function flattenSummary(summary: Summary, option: EaterOption, slot: string, color = VENDOR_COLORS[0]): Row[] {
   const it = summary.item;
   const locId = it.selectedVendorLocation?.id ?? null;
   const rows: Row[] = [];
@@ -131,6 +138,8 @@ export function flattenSummary(summary: Summary, option: EaterOption, slot: stri
         imageLarge: item.images?.[0]?.medium ?? item.images?.[0]?.large ?? item.images?.[0]?.thumbnail ?? null,
         vendorName: option.vendorName || it.vendor.name,
         vendorLocationName: option.vendorLocationName || it.selectedVendorLocation?.name || '',
+        vendorLogo: option.vendorImage?.[0]?.thumbnail ?? null,
+        vendorColor: color,
         orderId: option.orderId,
         orderHumanId: option.orderHumanId,
         slot,
@@ -155,12 +164,13 @@ export interface FilterState {
   mode: FilterMode;
   search: string;
   slots: Set<string> | null; // null = all
+  vendors: Set<string> | null; // orderIds; null = all
   hideSoldOut: boolean;
   maxPrice: number | null;
 }
 
 export function defaultFilter(): FilterState {
-  return { diets: new Set(), mode: 'any', search: '', slots: null, hideSoldOut: true, maxPrice: null };
+  return { diets: new Set(), mode: 'any', search: '', slots: null, vendors: null, hideSoldOut: true, maxPrice: null };
 }
 
 export function matchesDiet(row: Row, f: FilterState): boolean {
@@ -176,6 +186,7 @@ export function applyFilter(rows: Row[], f: FilterState): Row[] {
   return rows.filter((r) => {
     if (f.hideSoldOut && r.capacity === 'SOLD_OUT') return false;
     if (f.slots && !f.slots.has(r.slot)) return false;
+    if (f.vendors && !f.vendors.has(r.orderId)) return false;
     if (f.maxPrice != null && r.price > f.maxPrice) return false;
     if (!matchesDiet(r, f)) return false;
     if (q) {

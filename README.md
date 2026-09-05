@@ -20,7 +20,9 @@ buttons. The site reloads itself once shortly after first load, so if the button
 
 - Every non-hidden item available at the vendor's selected location, from every provider that day, with the
   provider name linking to that provider's ordering page (`/my-meals/<orderId>`).
-- Two views, switchable in the header: a **Table** and **Tiles** with large photos. The choice is remembered.
+- Two views, switchable in the header: **Tiles** (default) with large photos, and a **Table**. The choice is
+  remembered. Each provider gets a colour (tile top border, table row stripe) and its logo sits on the tile.
+- Provider checkboxes in the filter bar: all on by default; untick to drop a provider (OR across ticked ones).
 - Sorted by price descending by default. Click a table header or use the sort dropdown.
 - Diet filter: Vegetarian, Vegan, Pescatarian, Gluten free, Dairy free, Nut free, Halal.
   **Match any (inclusive)** shows items matching at least one selected diet (e.g. vegetarian OR pescatarian).
