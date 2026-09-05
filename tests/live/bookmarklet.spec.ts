@@ -40,6 +40,7 @@ test.describe('bookmarklet on /my-meals', () => {
   test.beforeAll(async () => {
     test.setTimeout(120_000);
     ctx = await chromium.launchPersistentContext(PROFILE, { headless: false, viewport: { width: 1400, height: 1000 } });
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
     page = ctx.pages()[0] ?? (await ctx.newPage());
     page.on('load', () => {
       loads++;
@@ -176,6 +177,31 @@ test.describe('bookmarklet on /my-meals', () => {
     await overlay.locator('.group .quick', { hasText: 'all' }).click();
     await expect(overlay.locator('.tile')).toHaveCount(total);
     await overlay.locator('.seg label', { hasText: 'Table' }).click();
+  });
+
+  test('header shows the day budget with spend and remaining; Copy as Markdown copies grouped details', async () => {
+    const overlay = await ensureOverlay();
+    const budget = overlay.locator('header .budget');
+    await expect(budget).toContainText('Budget £');
+    // Monday has confirmed orders in both slots, so spend and remaining must appear.
+    const dayHasOrder = (await page.locator('li[test-id="days"]').first().locator('[test-id="clearOrder"]').count()) > 0;
+    if (dayHasOrder) {
+      await expect(budget).toContainText('remaining');
+      const txt = (await budget.textContent())!;
+      const nums = [...txt.matchAll(/£(\d+\.\d\d)/g)].map((m) => Number(m[1]));
+      expect(nums.length).toBe(3); // budget, spent, remaining
+      expect(Math.round((nums[0] - nums[1]) * 100) / 100).toBe(nums[2]);
+    }
+
+    await overlay.locator('button.copy').click();
+    const md = await page.evaluate(() => navigator.clipboard.readText());
+    expect(md.startsWith('# Lunch options · ')).toBe(true);
+    expect(md).toContain('## Delivery slot ');
+    expect(md).toMatch(/### .+ \(\d+ items/);
+    const shown = Number((await overlay.locator('.status').textContent())!.match(/^(\d+) of/)![1]);
+    expect((md.match(/^- \*\*/gm) ?? []).length).toBe(shown);
+    if (dayHasOrder) expect(md).toContain('Remaining: £');
+    await expect(page.locator('#jefb-compare-toast .t')).toContainText('Copied');
   });
 
   test('search and sort by name work; Escape closes', async () => {

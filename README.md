@@ -35,6 +35,10 @@ buttons. The site reloads itself once shortly after first load, so if the button
   item so you can pick. Nothing is ordered until you confirm. The comparison is only hidden, not closed: a
   **Back to comparison** pill at the bottom right restores it with your filters, view and sort intact.
   Escape, clicking outside, or **Minimise** also hide it; **Close** discards it.
+- The header shows the day's subsidised budget, what you have already spent (both slots share one budget) and
+  what remains; prices above the remaining amount are red with the top-up in the tooltip.
+- **Copy as Markdown** copies the items currently shown, grouped by slot and provider with price, kcal, diets,
+  allergens, ingredients and budget context, ready to paste into an LLM.
 - Prices above the day's budget are red. Items you have already chosen are marked. Sold-out providers are listed
   in the header but not fetched, because the API answers 409 for them.
 

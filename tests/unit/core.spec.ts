@@ -8,6 +8,10 @@ import {
   matchesDiet,
   possibleDietaries,
   sortRows,
+  contrastWithWhite,
+  remainingBudget,
+  toMarkdown,
+  VENDOR_COLORS,
 } from '../../src/core';
 import type { BaseItem, CartsResponse, Dietaries, EaterOption, Row, Summary } from '../../src/types';
 
@@ -201,6 +205,39 @@ test.describe('sortRows', () => {
     const rows = [row({ name: 'b', price: 1, vendorName: 'Zed' }), row({ name: 'a', price: 1, vendorName: 'Alpha' })];
     expect(sortRows(rows, { key: 'vendorName', dir: 'asc' }).map((r) => r.vendorName)).toEqual(['Alpha', 'Zed']);
   });
+});
+
+test('every provider colour is readable with white text (contrast >= 4.5)', () => {
+  for (const c of VENDOR_COLORS) expect(contrastWithWhite(c), c).toBeGreaterThanOrEqual(4.5);
+  expect(new Set(VENDOR_COLORS).size).toBe(VENDOR_COLORS.length);
+});
+
+test('remaining budget subtracts every confirmed order on the day', () => {
+  expect(remainingBudget(20, [])).toBe(20);
+  expect(remainingBudget(20, [{ vendorName: 'A', itemNames: ['x'], cost: 12.5 }, { vendorName: 'B', itemNames: ['y'], cost: 8.5 }])).toBe(-1);
+  expect(remainingBudget(null, [])).toBeNull();
+});
+
+test('toMarkdown groups by slot then provider and includes all details', () => {
+  const rows = [
+    row({ name: 'Steak', price: 14, kcal: 700, slot: '12:00 - 12:30', vendorName: 'Yolk', vendorLocationName: 'Soho', orderId: 'o1', description: 'Big steak', allergens: ['gluten'], ingredients: ['beef', 'bun'], spicy: true }),
+    row({ name: 'Veg', price: 8, slot: '12:00 - 12:30', vendorName: 'Yolk', orderId: 'o1', dietaries: diet({ vegetarian: true }), type: 'CustomItem' }),
+    row({ name: 'Fish', price: 10, slot: '12:30 - 13:00', vendorName: 'Shoyu', orderId: 'o2', dietaries: diet({ pescatarian: true }), chosen: true, capacity: 'ALMOST_SOLD_OUT' }),
+  ];
+  const md = toMarkdown(rows, { dayLabel: 'Monday 7th Sep', budget: 20, spent: [{ vendorName: 'Chilango', itemNames: ['Burrito'], cost: 12.5 }], remaining: 7.5, filterSummary: 'diet: Vegetarian or Pescatarian', totalRows: 300 });
+  expect(md).toContain('# Lunch options · Monday 7th Sep');
+  expect(md).toContain('Remaining: £7.50');
+  expect(md).toContain('Burrito (Chilango)');
+  expect(md).toContain('Showing 3 of 300 items (diet: Vegetarian or Pescatarian)');
+  expect(md.indexOf('## Delivery slot 12:00 - 12:30')).toBeLessThan(md.indexOf('## Delivery slot 12:30 - 13:00'));
+  expect(md).toContain('### Yolk · Soho (2 items)');
+  expect(md).toContain('### Shoyu (1 items, almost sold out)');
+  expect(md).toContain('- **Steak** — £14.00 (top-up £6.50) · 700 kcal · spicy · section: Mains');
+  expect(md).toContain('  Big steak');
+  expect(md).toContain('  Allergens: gluten');
+  expect(md).toContain('  Ingredients: beef, bun');
+  expect(md).toContain('- **Veg** — £8.00 (top-up £0.50) · Vegetarian · has options to choose');
+  expect(md).toContain('Pescatarian · ALREADY CHOSEN');
 });
 
 test('cartsByDay groups slots on the same day and drops cancelled carts', () => {

@@ -24,7 +24,8 @@ export const DIET_SHORT: Record<DietKey, string> = {
 };
 
 /** Distinct colours assigned to providers in list order so the same provider is easy to spot. */
-export const VENDOR_COLORS = ['#4e79a7', '#e15759', '#59a14f', '#b07aa1', '#f28e2b', '#76b7b2', '#edc948', '#ff9da7', '#9c755f', '#1f77b4', '#2ca02c', '#8c564b', '#e377c2', '#17becf', '#bcbd22'];
+// All have a contrast ratio of at least 4.5:1 against white text (checked in the unit tests).
+export const VENDOR_COLORS = ['#3b6ea8', '#c0392b', '#4a7d2c', '#7d5ba6', '#b85c00', '#0f7c91', '#6b6b1f', '#a8325f', '#7a5230', '#2c5f8a', '#8e3a80', '#c2185b', '#5c6bc0', '#00838f', '#455a64'];
 
 export function vendorColor(index: number): string {
   return VENDOR_COLORS[index % VENDOR_COLORS.length];
@@ -225,4 +226,88 @@ export function sortRows(rows: Row[], s: SortState): Row[] {
 
 export function formatPrice(n: number): string {
   return `£${n.toFixed(2)}`;
+}
+
+/** WCAG relative luminance contrast of a hex colour against white. */
+export function contrastWithWhite(hex: string): number {
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  const l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  return 1.05 / (l + 0.05);
+}
+
+export interface Spend {
+  vendorName: string;
+  itemNames: string[];
+  cost: number;
+}
+
+/** Remaining budget for the day: the budget is shared across both slots; each confirmed order eats into it. */
+export function remainingBudget(budget: number | null, spent: Spend[]): number | null {
+  if (budget == null) return null;
+  return Math.round((budget - spent.reduce((a, s) => a + s.cost, 0)) * 100) / 100;
+}
+
+export interface MarkdownMeta {
+  dayLabel: string;
+  budget: number | null;
+  spent: Spend[];
+  remaining: number | null;
+  filterSummary: string;
+  totalRows: number;
+}
+
+function dietList(r: Row): string {
+  const sure = DIET_KEYS.filter((k) => r.dietaries[k]).map((k) => DIET_LABELS[k]);
+  const maybe = DIET_KEYS.filter((k) => !r.dietaries[k] && r.possibleDietaries[k]).map((k) => `${DIET_LABELS[k]} (with the right choice)`);
+  return [...sure, ...maybe].join(', ');
+}
+
+/**
+ * Markdown for pasting into an LLM: day -> slot -> provider -> items, with every detail we have.
+ * Rows are emitted in the order given (i.e. the current sort), grouped without re-sorting.
+ */
+export function toMarkdown(rows: Row[], meta: MarkdownMeta): string {
+  const out: string[] = [];
+  out.push(`# Lunch options · ${meta.dayLabel}`, '');
+  if (meta.budget != null) {
+    const spentTxt = meta.spent.length ? ` · already spent ${formatPrice(meta.spent.reduce((a, s) => a + s.cost, 0))} on ${meta.spent.map((s) => `${s.itemNames.join(', ')} (${s.vendorName})`).join('; ')}` : '';
+    out.push(`Subsidised budget for the day: ${formatPrice(meta.budget)}${spentTxt}. Remaining: ${formatPrice(meta.remaining ?? meta.budget)}. Anything above the remaining budget needs a personal top-up of the difference.`);
+  }
+  out.push(`Showing ${rows.length} of ${meta.totalRows} items${meta.filterSummary ? ` (${meta.filterSummary})` : ''}.`, '');
+  const bySlot = new Map<string, Map<string, Row[]>>();
+  for (const r of rows) {
+    if (!bySlot.has(r.slot)) bySlot.set(r.slot, new Map());
+    const byVendor = bySlot.get(r.slot)!;
+    const key = `${r.vendorName}|${r.orderId}`;
+    if (!byVendor.has(key)) byVendor.set(key, []);
+    byVendor.get(key)!.push(r);
+  }
+  for (const [slot, byVendor] of bySlot) {
+    out.push(`## Delivery slot ${slot}`, '');
+    for (const [, items] of byVendor) {
+      const v = items[0];
+      const notes: string[] = [];
+      if (v.capacity === 'ALMOST_SOLD_OUT') notes.push('almost sold out');
+      if (v.capacity === 'SOLD_OUT') notes.push('sold out');
+      out.push(`### ${v.vendorName}${v.vendorLocationName ? ` · ${v.vendorLocationName}` : ''} (${items.length} items${notes.length ? `, ${notes.join(', ')}` : ''})`, '');
+      for (const r of items) {
+        const lim = meta.remaining ?? meta.budget;
+        const bits: string[] = [formatPrice(r.price) + (lim != null && r.price > lim ? ` (top-up ${formatPrice(r.price - lim)})` : '')];
+        if (r.kcal != null) bits.push(`${r.kcal} kcal`);
+        const diets = dietList(r);
+        if (diets) bits.push(diets);
+        if (r.spicy) bits.push('spicy');
+        if (r.type === 'CustomItem') bits.push('has options to choose');
+        if (r.type === 'ItemBundle') bits.push('bundle with choices');
+        if (r.chosen) bits.push('ALREADY CHOSEN');
+        bits.push(`section: ${r.section}`);
+        out.push(`- **${r.name}** — ${bits.join(' · ')}`);
+        if (r.description) out.push(`  ${r.description.replace(/\s*\n\s*/g, ' ')}`);
+        if (r.allergens.length) out.push(`  Allergens: ${r.allergens.join(', ')}`);
+        if (r.ingredients.length) out.push(`  Ingredients: ${r.ingredients.join(', ')}`);
+      }
+      out.push('');
+    }
+  }
+  return out.join('\n').trimEnd() + '\n';
 }

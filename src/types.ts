@@ -82,6 +82,8 @@ export interface EaterOption {
   vendorImage?: ImageSet[];
   itemIds?: string[];
   itemNames?: string[];
+  eaterCartStatus?: string | null; // 'confirmed' once the eater has chosen from this vendor
+  topUpValue?: number | null;
   vendorLocationCapacityStatus: CapacityStatus;
 }
 
@@ -94,6 +96,15 @@ export interface Cart {
   choiceDeadline: string;
   eaterOptions: EaterOption[];
   location: { name: string };
+}
+
+/** GET /api/eaters/me/orders/<orderId>/cart (only the bits we read). */
+export interface CartResponse {
+  item: {
+    cartItems: { quantity: number; item: { name: string; price: number } }[];
+    costBreakdown?: { itemsCost?: { gross: number }; availableBudget?: number };
+    eaterCostBreakdown?: { totalEaterCost?: { gross: number } };
+  };
 }
 
 export interface CartsResponse {

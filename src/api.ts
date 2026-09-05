@@ -1,5 +1,5 @@
 // Thin wrappers over the same-origin JSON API the Angular app uses. Cookies are sent automatically.
-import type { CartsResponse, Summary } from './types';
+import type { CartResponse, CartsResponse, Summary } from './types';
 
 async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(path, { credentials: 'include', headers: { accept: 'application/json' } });
@@ -12,6 +12,11 @@ export function fetchCarts(): Promise<CartsResponse> {
   const from = new Date();
   from.setHours(0, 0, 0, 0);
   return getJson<CartsResponse>(`/api/eaters/me/carts?from=${encodeURIComponent(from.toISOString())}`);
+}
+
+/** The eater's confirmed cart for one vendor order: what was chosen and what it cost. */
+export function fetchCart(orderId: string): Promise<CartResponse> {
+  return getJson<CartResponse>(`/api/eaters/me/orders/${encodeURIComponent(orderId)}/cart`);
 }
 
 /** Full menu for one vendor order (an eaterOption.orderId). Works even before the choice window opens. */

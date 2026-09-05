@@ -1,5 +1,5 @@
 // Comparison overlay. Rendered into a shadow root so the host page's CSS cannot interfere.
-import { fetchSummary } from './api';
+import { fetchCart, fetchSummary } from './api';
 import {
   applyFilter,
   defaultFilter,
@@ -8,13 +8,17 @@ import {
   DIET_SHORT,
   flattenSummary,
   formatPrice,
+  remainingBudget,
   sortRows,
+  toMarkdown,
   vendorColor,
+  DIET_LABELS as DL,
+  type Spend,
   type FilterState,
   type SortKey,
   type SortState,
 } from './core';
-import { chooseItem } from './choose';
+import { chooseItem, toast } from './choose';
 import type { Cart, EaterOption, Row } from './types';
 
 export interface OverlayOptions {
@@ -32,6 +36,12 @@ const CSS = `
 header { display: flex; align-items: center; gap: 16px; padding: 12px 18px; border-bottom: 1px solid #e4e6eb; background: #fafbfc; }
 header h1 { font-size: 18px; margin: 0; font-weight: 700; }
 header .meta { color: #5a6272; font-size: 13px; }
+header .budget { font-size: 13px; color: #1f2430; background: #f1f3f6; border-radius: 6px; padding: 4px 10px; }
+header .budget b { font-weight: 700; }
+header .budget b.neg { color: #b3261e; }
+header .budget b.pos { color: #1b6b3a; }
+button.copy { border: 0; background: #eef0f4; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
+button.copy:hover { background: #dfe3ea; }
 header .grow { flex: 1; }
 button.close { border: 0; background: #eef0f4; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
 button.minimise { border: 0; background: #eef0f4; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
@@ -185,6 +195,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     loaded: 0,
     errors: [] as string[],
     budget: null as number | null,
+    spent: [] as Spend[],
+    remaining: null as number | null,
     view: (safeGet('jefb-compare-view') === 'table' ? 'table' : 'tiles') as 'table' | 'tiles',
   };
 
@@ -223,6 +235,9 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
 
   // Header
   const meta = h('span', { class: 'meta' });
+  const budgetEl = h('span', { class: 'budget' });
+  const copyBtn = h('button', { class: 'copy', type: 'button', title: 'Copy the items currently shown as Markdown, grouped by slot and provider, e.g. to paste into an LLM' }, 'Copy as Markdown');
+  copyBtn.addEventListener('click', () => void copyMarkdown());
   const closeBtn = h('button', { class: 'close', type: 'button', title: 'Discard the comparison' }, 'Close ✕');
   closeBtn.addEventListener('click', close);
   const minBtn = h('button', { class: 'minimise', type: 'button', title: 'Hide the comparison; a button at the bottom right brings it back' }, 'Minimise \u2013');
@@ -232,7 +247,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     safeSet('jefb-compare-view', v);
     render();
   });
-  panel.append(h('header', {}, h('h1', {}, `Compare menus · ${opts.dayLabel}`), meta, h('span', { class: 'grow' }), viewToggle, minBtn, closeBtn));
+  panel.append(h('header', {}, h('h1', {}, `Compare menus · ${opts.dayLabel}`), budgetEl, meta, h('span', { class: 'grow' }), copyBtn, viewToggle, minBtn, closeBtn));
 
   // Controls
   const controls = h('div', { class: 'controls' });
@@ -382,6 +397,48 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     return null;
   }
 
+  const limit = () => state.remaining ?? state.budget;
+  const isOver = (price: number) => {
+    const lim = limit();
+    return lim != null && price > lim;
+  };
+  const overTitle = (price: number) => {
+    const lim = limit()!;
+    return state.spent.length ? `${formatPrice(price - lim)} top-up: only ${formatPrice(lim)} of the budget is left today` : `Over the ${formatPrice(lim)} budget by ${formatPrice(price - lim)}`;
+  };
+
+  function visibleRows(): Row[] {
+    return sortRows(applyFilter(state.rows, state.filter), state.sort);
+  }
+
+  function filterSummary(): string {
+    const parts: string[] = [];
+    if (state.filter.diets.size) parts.push(`diet: ${[...state.filter.diets].map((k) => DL[k]).join(state.filter.mode === 'any' ? ' or ' : ' and ')}`);
+    if (state.filter.vendors && state.filter.vendors.size < options.length) parts.push(`${state.filter.vendors.size} of ${options.length} providers`);
+    if (state.filter.slots && state.filter.slots.size < slotNames.length) parts.push(`slot ${[...state.filter.slots].join(', ')}`);
+    if (state.filter.search.trim()) parts.push(`search "${state.filter.search.trim()}"`);
+    if (state.filter.maxPrice != null) parts.push(`max ${formatPrice(state.filter.maxPrice)}`);
+    return parts.join('; ');
+  }
+
+  async function copyMarkdown(): Promise<void> {
+    const md = toMarkdown(visibleRows(), { dayLabel: opts.dayLabel, budget: state.budget, spent: state.spent, remaining: state.remaining, filterSummary: filterSummary(), totalRows: state.rows.length });
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(md);
+      ok = true;
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = md;
+      ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.append(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    }
+    toast(ok ? `Copied ${visibleRows().length} items as Markdown (${(md.length / 1024).toFixed(0)} KB).` : 'Could not copy to the clipboard.', 5000);
+  }
+
   function chooseButton(r: Row): HTMLButtonElement {
     const b = h('button', { class: 'choose', type: 'button', 'data-item-id': r.itemId, 'data-order-id': r.orderId, 'data-type': r.type }, r.type === 'SingleItem' ? 'Choose' : 'Choose…');
     if (r.capacity === 'SOLD_OUT') b.disabled = true;
@@ -418,8 +475,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     tr.append(vendorCell);
 
     tr.append(h('td', { class: 'section' }, r.section));
-    const over = r.budget != null && r.price > r.budget;
-    tr.append(h('td', { class: `price${over ? ' over' : ''}`, title: over ? `Over the ${formatPrice(r.budget!)} budget` : '' }, formatPrice(r.price)));
+    const over = isOver(r.price);
+    tr.append(h('td', { class: `price${over ? ' over' : ''}`, title: over ? overTitle(r.price) : '' }, formatPrice(r.price)));
     tr.append(h('td', { class: 'kcal' }, r.kcal == null ? '' : String(r.kcal)));
 
     const tags = h('td', { class: 'tags' });
@@ -437,13 +494,13 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     if (r.imageLarge) tile.append(h('img', { class: 'photo', src: r.imageLarge, alt: '', loading: 'lazy' }));
     else tile.append(h('div', { class: 'nophoto' }, 'No photo'));
     const body = h('div', { class: 'body' });
-    const over = r.budget != null && r.price > r.budget;
+    const over = isOver(r.price);
     body.append(
       h(
         'div',
         { class: 'top' },
         h('span', { class: 'name' }, r.name),
-        h('span', { class: `price${over ? ' over' : ''}`, title: over ? `Over the ${formatPrice(r.budget!)} budget` : '' }, formatPrice(r.price)),
+        h('span', { class: `price${over ? ' over' : ''}`, title: over ? overTitle(r.price) : '' }, formatPrice(r.price)),
       ),
     );
     const badges = h('div');
@@ -492,18 +549,39 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     empty.textContent = loading ? 'Loading menus…' : 'No items match the current filters.';
     if (visible.length === 0) wrap.append(empty);
     else empty.remove();
-    meta.textContent = [
-      `${options.length} providers`,
-      state.budget != null ? `budget ${formatPrice(state.budget)}` : null,
-      soldOutVendors.length ? `sold out: ${soldOutVendors.join(', ')}` : null,
-    ]
-      .filter(Boolean)
-      .join(' · ');
+    state.remaining = remainingBudget(state.budget, state.spent);
+    budgetEl.replaceChildren();
+    if (state.budget != null) {
+      budgetEl.append('Budget ', h('b', {}, formatPrice(state.budget)));
+      if (state.spent.length) {
+        budgetEl.append(` · spent ${formatPrice(state.spent.reduce((a, s) => a + s.cost, 0))} on ${state.spent.map((s) => s.vendorName).join(', ')} · remaining `, h('b', { class: state.remaining! > 0 ? 'pos' : 'neg' }, formatPrice(state.remaining!)));
+      }
+    } else {
+      budgetEl.textContent = 'Budget: loading…';
+    }
+    meta.textContent = [`${options.length} providers`, soldOutVendors.length ? `sold out: ${soldOutVendors.join(', ')}` : null].filter(Boolean).join(' · ');
   }
 
   renderHead();
   render();
   document.body.append(host);
+
+  // What has already been ordered today (both slots share one budget).
+  for (const cart of opts.carts) {
+    for (const o of cart.eaterOptions) {
+      if (o.eaterCartStatus !== 'confirmed' && !(o.itemIds?.length)) continue;
+      fetchCart(o.orderId)
+        .then((c) => {
+          const cost = c.item.costBreakdown?.itemsCost?.gross ?? c.item.cartItems.reduce((a, ci) => a + ci.quantity * ci.item.price, 0);
+          state.spent.push({ vendorName: o.vendorName, itemNames: c.item.cartItems.map((ci) => ci.item.name), cost });
+          render();
+        })
+        .catch(() => {
+          state.spent.push({ vendorName: o.vendorName, itemNames: o.itemNames ?? [], cost: 0 });
+          render();
+        });
+    }
+  }
 
   // Load all menus concurrently, rendering as each arrives.
   for (const { option, slot, color } of options) {
