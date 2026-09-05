@@ -42,4 +42,6 @@ fs.writeFileSync(
 <p>Size: ${(url.length / 1024).toFixed(1)} KB</p>
 `,
 );
+// GitHub Pages serves index.html at the site root.
+fs.copyFileSync('dist/install.html', 'dist/index.html');
 console.log(`built dist/bookmarklet.js (${(code.length / 1024).toFixed(1)} KB), url ${(url.length / 1024).toFixed(1)} KB`);
