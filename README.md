@@ -6,6 +6,8 @@ menu of every provider on that day, across both lunch slots, and shows them in o
 
 ## Install
 
+The latest build is published at https://cgkeeley.github.io/just-eat-bookmarklet/ — drag the link from there. To build locally instead:
+
 1. `npm install && npm run build`
 2. Open `dist/install.html` in a browser and drag the orange link to your bookmarks bar, or create a bookmark
    manually and paste the contents of `dist/bookmarklet.url.txt` as its URL.
