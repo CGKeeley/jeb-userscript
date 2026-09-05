@@ -26,13 +26,21 @@ export interface OverlayOptions {
 const CSS = `
 :host { all: initial; }
 * { box-sizing: border-box; }
-.backdrop { position: fixed; inset: 0; background: rgba(20,20,30,.55); z-index: 2147483000; display: flex; align-items: stretch; justify-content: center; padding: 16px; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1f2430; }
-.panel { background: #fff; border-radius: 10px; width: min(1400px, 100%); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+.backdrop { position: fixed; inset: 0; background: rgba(20,20,30,.55); z-index: 2147483000; display: flex; align-items: stretch; justify-content: center; padding: 20px 24px; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1f2430; }
+.panel { background: #fff; border-radius: 10px; width: 100%; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
 header { display: flex; align-items: center; gap: 16px; padding: 12px 18px; border-bottom: 1px solid #e4e6eb; background: #fafbfc; }
 header h1 { font-size: 18px; margin: 0; font-weight: 700; }
 header .meta { color: #5a6272; font-size: 13px; }
 header .grow { flex: 1; }
 button.close { border: 0; background: #eef0f4; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
+button.minimise { border: 0; background: #eef0f4; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
+button.minimise:hover, button.close:hover { background: #dfe3ea; }
+.pill { position: fixed; right: 24px; bottom: 24px; z-index: 2147483000; display: flex; align-items: center; gap: 6px; background: #1f2430; color: #fff; border-radius: 999px; padding: 8px 8px 8px 16px; font: 14px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+.pill button { border: 0; background: transparent; color: #fff; cursor: pointer; font: inherit; padding: 4px 8px; border-radius: 999px; }
+.pill button.primary { background: #ff8000; font-weight: 600; }
+.pill button:hover { background: rgba(255,255,255,.15); }
+.pill button.primary:hover { background: #e67300; }
+[hidden] { display: none !important; }
 button.close:hover { background: #dfe3ea; }
 .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 10px 18px; border-bottom: 1px solid #e4e6eb; align-items: center; }
 .group { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
@@ -174,29 +182,47 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     host.remove();
     document.removeEventListener('keydown', onKey);
   };
+  // Hide keeps the overlay (rows, filters, view, scroll) in memory and shows a pill to bring it back.
+  const hide = () => {
+    backdrop.hidden = true;
+    pill.hidden = false;
+  };
+  const show = () => {
+    backdrop.hidden = false;
+    pill.hidden = true;
+    render();
+  };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape' && !backdrop.hidden) hide();
   };
   document.addEventListener('keydown', onKey);
 
   const backdrop = h('div', { class: 'backdrop' });
   backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) close();
+    if (e.target === backdrop) hide();
   });
   const panel = h('div', { class: 'panel' });
   backdrop.append(panel);
-  shadow.append(backdrop);
+  const pillOpen = h('button', { class: 'primary', type: 'button', title: 'Reopen the comparison with your filters intact' }, 'Back to comparison');
+  pillOpen.addEventListener('click', show);
+  const pillClose = h('button', { type: 'button', title: 'Discard the comparison' }, '\u2715');
+  pillClose.addEventListener('click', close);
+  const pill = h('div', { class: 'pill' }, `${opts.dayLabel}`, pillOpen, pillClose);
+  pill.hidden = true;
+  shadow.append(backdrop, pill);
 
   // Header
   const meta = h('span', { class: 'meta' });
-  const closeBtn = h('button', { class: 'close', type: 'button' }, 'Close ✕');
+  const closeBtn = h('button', { class: 'close', type: 'button', title: 'Discard the comparison' }, 'Close ✕');
   closeBtn.addEventListener('click', close);
+  const minBtn = h('button', { class: 'minimise', type: 'button', title: 'Hide the comparison; a button at the bottom right brings it back' }, 'Minimise \u2013');
+  minBtn.addEventListener('click', hide);
   const viewToggle = radioGroup<'table' | 'tiles'>('view', [['table', 'Table'], ['tiles', 'Tiles']], state.view, (v) => {
     state.view = v;
     safeSet('jefb-compare-view', v);
     render();
   });
-  panel.append(h('header', {}, h('h1', {}, `Compare menus · ${opts.dayLabel}`), meta, h('span', { class: 'grow' }), viewToggle, closeBtn));
+  panel.append(h('header', {}, h('h1', {}, `Compare menus · ${opts.dayLabel}`), meta, h('span', { class: 'grow' }), viewToggle, minBtn, closeBtn));
 
   // Controls
   const controls = h('div', { class: 'controls' });
@@ -235,7 +261,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     controls.append(slotGroup);
   }
 
-  const search = h('input', { class: 'search', type: 'search', placeholder: 'Search name, description, ingredients…' });
+  // type=text rather than search: Escape in a search box clears it natively, and Escape is our hide key.
+  const search = h('input', { class: 'search', type: 'text', placeholder: 'Search name, description, ingredients…' });
   search.addEventListener('input', () => {
     state.filter.search = search.value;
     render();
@@ -320,7 +347,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     b.title = r.type === 'SingleItem' ? 'Open this provider and add the item to your basket. You then confirm on their page.' : 'Open this provider at this item so you can pick its options.';
     b.addEventListener('click', (e) => {
       e.stopPropagation();
-      close();
+      hide();
       void chooseItem(r);
     });
     return b;

@@ -62,7 +62,13 @@ function currentQuantity(itemEl: Element): number {
 export async function chooseItem(row: Row): Promise<void> {
   const targetPath = `/my-meals/${row.orderId}`;
   if (!location.pathname.endsWith(targetPath)) {
-    const btn = findVendorButton(row.orderHumanId);
+    let btn = findVendorButton(row.orderHumanId);
+    if (!btn && /\/my-meals\/[^/]+$/.test(location.pathname)) {
+      // On another provider's page: step back to the list inside the app, then pick from there.
+      history.back();
+      await waitFor(() => document.querySelector('[test-id="eaterOption"]'), 10000);
+      btn = findVendorButton(row.orderHumanId);
+    }
     if (btn && !(btn as HTMLButtonElement).disabled) {
       btn.click(); // in-app navigation, our script keeps running
     } else {

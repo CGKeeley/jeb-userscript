@@ -30,7 +30,9 @@ buttons. The site reloads itself once shortly after first load, so if the button
   ingredients, and a max price box.
 - **Choose** on a row or tile opens that provider inside the app, scrolls to the item and presses + for you.
   You then click the site's own **Confirm Choice**. For items with options or bundles it only scrolls to the
-  item so you can pick. Nothing is ordered until you confirm.
+  item so you can pick. Nothing is ordered until you confirm. The comparison is only hidden, not closed: a
+  **Back to comparison** pill at the bottom right restores it with your filters, view and sort intact.
+  Escape, clicking outside, or **Minimise** also hide it; **Close** discards it.
 - Prices above the day's budget are red. Items you have already chosen are marked. Sold-out providers are listed
   in the header but not fetched, because the API answers 409 for them.
 

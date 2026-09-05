@@ -163,7 +163,14 @@ test.describe('bookmarklet on /my-meals', () => {
     expect(after.length).toBeGreaterThan(0);
     for (const t of after) expect(t).toContain(word.toLowerCase());
 
+    // Escape hides (state kept) and shows the pill; the pill's x discards.
     await page.keyboard.press('Escape');
+    await expect(overlay.locator('.backdrop')).toBeHidden();
+    await expect(overlay.locator('.pill')).toBeVisible();
+    await overlay.locator('.pill button.primary').click();
+    await expect(overlay.locator('.backdrop')).toBeVisible();
+    await expect(overlay.locator('input.search')).toHaveValue(word);
+    await overlay.locator('button.close').click();
     await expect(overlay).toHaveCount(0);
   });
 });

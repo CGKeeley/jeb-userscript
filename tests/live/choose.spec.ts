@@ -47,6 +47,10 @@ test.describe('Choose an item from the comparison (Tuesday)', () => {
     const overlay = page.locator('#jefb-compare-host');
     await expect(overlay.locator('.status')).not.toContainText('loading', { timeout: 30_000 });
 
+    // Set a filter so we can check it survives the round trip.
+    await overlay.locator('label.chk', { hasText: 'Pescatarian' }).click();
+    const shownBefore = await overlay.locator('.status').textContent();
+
     // Pick a plain item from a provider that is open for choice (has an Add/Choose button on the list).
     const choose = overlay.locator('button.choose[data-type="SingleItem"]:not([disabled])').first();
     const itemId = (await choose.getAttribute('data-item-id'))!;
@@ -57,9 +61,11 @@ test.describe('Choose an item from the comparison (Tuesday)', () => {
     console.log(`[choose] ${itemName} from ${vendor} (order ${orderId})`);
     await choose.click();
 
-    await expect(overlay).toHaveCount(0);
+    // Hidden, not destroyed: pill visible, backdrop hidden.
+    await expect(overlay.locator('.backdrop')).toBeHidden();
+    await expect(overlay.locator('.pill')).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`/my-meals/${orderId}$`), { timeout: 20_000 });
-    const itemEl = page.locator(`[data-item-id="${itemId}"]`);
+    const itemEl = page.locator(`[test-id="root"][data-item-id="${itemId}"]`).first();
     await expect(itemEl).toBeVisible({ timeout: 20_000 });
     await expect(itemEl.locator('input[test-id="quantityInput"]')).toHaveValue('1', { timeout: 10_000 });
     await expect(page.locator('#jefb-compare-toast')).toBeAttached();
@@ -75,10 +81,28 @@ test.describe('Choose an item from the comparison (Tuesday)', () => {
 
     const cart = await page.evaluate(async (id) => (await fetch(`/api/eaters/me/orders/${id}/cart`)).json(), orderId);
     expect(cart.item.cartItems).toEqual([]);
+
+    // Bring the comparison back from the provider page: filter and counts intact.
+    await overlay.locator('.pill button.primary').click();
+    await expect(overlay.locator('.backdrop')).toBeVisible();
+    await expect(overlay.locator('label.chk', { hasText: 'Pescatarian' }).locator('input')).toBeChecked();
+    await expect(overlay.locator('.status')).toHaveText(shownBefore!);
+
+    // Choose from a different provider while still on this provider's page: goes back to the list in-app first.
+    const other = overlay.locator(`button.choose[data-type="SingleItem"]:not([disabled]):not([data-order-id="${orderId}"])`).first();
+    const otherItem = (await other.getAttribute('data-item-id'))!;
+    const otherOrder = (await other.getAttribute('data-order-id'))!;
+    await other.click();
+    await expect(page).toHaveURL(new RegExp(`/my-meals/${otherOrder}$`), { timeout: 25_000 });
+    const otherEl = page.locator(`[test-id="root"][data-item-id="${otherItem}"]`).first();
+    await expect(otherEl.locator('input[test-id="quantityInput"]')).toHaveValue('1', { timeout: 20_000 });
+    await otherEl.locator('button[test-id="decrement"]').click();
+    await expect(otherEl.locator('input[test-id="quantityInput"]')).toHaveValue('0');
+    expect(blockedWrites).toEqual([]);
   });
 
   test('going back to the list re-adds the Compare buttons without re-running the bookmarklet', async () => {
-    await page.goBack();
+    for (let i = 0; i < 3 && !/\/my-meals$/.test(page.url()); i++) await page.goBack();
     await expect(page).toHaveURL(/\/my-meals$/);
     await expect(page.locator('[data-jefb-compare-button]').first()).toBeVisible({ timeout: 10_000 });
     expect(blockedWrites).toEqual([]);

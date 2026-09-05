@@ -4,7 +4,7 @@ import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 const BASE = 'https://app.business.just-eat.co.uk';
 const code = fs.readFileSync('dist/bookmarklet.js', 'utf8');
-const ctx = await chromium.launchPersistentContext('auth/profile', { headless: false, viewport: { width: 1400, height: 1000 } });
+const ctx = await chromium.launchPersistentContext('auth/profile', { headless: false, viewport: { width: 2560, height: 1300 } });
 const page = ctx.pages()[0] ?? (await ctx.newPage());
 await page.goto(`${BASE}/my-meals`, { waitUntil: 'domcontentloaded' });
 await page.locator('li[test-id="days"]').first().waitFor();
