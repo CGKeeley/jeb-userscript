@@ -188,7 +188,7 @@ test.describe('bookmarklet on /my-meals', () => {
     if (dayHasOrder) {
       await expect(budget).toContainText('remaining');
       const txt = (await budget.textContent())!;
-      const nums = [...txt.matchAll(/£(\d+\.\d\d)/g)].map((m) => Number(m[1]));
+      const nums = [...txt.matchAll(/(-?)£(\d+\.\d\d)/g)].map((m) => Number(m[1] + m[2]));
       expect(nums.length).toBe(3); // budget, spent, remaining
       expect(Math.round((nums[0] - nums[1]) * 100) / 100).toBe(nums[2]);
     }
@@ -200,7 +200,7 @@ test.describe('bookmarklet on /my-meals', () => {
     expect(md).toMatch(/### .+ \(\d+ items/);
     const shown = Number((await overlay.locator('.status').textContent())!.match(/^(\d+) of/)![1]);
     expect((md.match(/^- \*\*/gm) ?? []).length).toBe(shown);
-    if (dayHasOrder) expect(md).toContain('Remaining: £');
+    if (dayHasOrder) expect(md).toMatch(/Remaining: -?£/);
     await expect(page.locator('#jefb-compare-toast .t')).toContainText('Copied');
   });
 

@@ -36,7 +36,9 @@ buttons. The site reloads itself once shortly after first load, so if the button
   **Back to comparison** pill at the bottom right restores it with your filters, view and sort intact.
   Escape, clicking outside, or **Minimise** also hide it; **Close** discards it.
 - The header shows the day's subsidised budget, what you have already spent (both slots share one budget) and
-  what remains; prices above the remaining amount are red with the top-up in the tooltip.
+  what remains; prices above the remaining amount are red with the top-up in the tooltip. The £20 is one
+  budget for the whole day, shared across both slots and every vendor, used up in the order you confirm.
+  Once it is gone the site offers a Pay button (card payment) instead of Confirm Choice, and the header says so.
 - **Copy as Markdown** copies the items currently shown, grouped by slot and provider with price, kcal, diets,
   allergens, ingredients and budget context, ready to paste into an LLM.
 - Prices above the day's budget are red. Items you have already chosen are marked. Sold-out providers are listed

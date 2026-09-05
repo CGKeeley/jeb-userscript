@@ -53,7 +53,8 @@ test.describe('Choose an item from the comparison (Tuesday)', () => {
     const shownBefore = await overlay.locator('.status').textContent();
 
     // Pick a plain item from a provider that is open for choice (has an Add/Choose button on the list).
-    const choose = overlay.locator('button.choose[data-type="SingleItem"]:not([disabled])').first();
+    // Skip vendors already ordered from: their list entry has Clear Order instead of Add, so Choose falls back to a full navigation.
+    const choose = overlay.locator('button.choose[data-type="SingleItem"][data-vendor-chosen="0"]:not([disabled])').first();
     const itemId = (await choose.getAttribute('data-item-id'))!;
     const orderId = (await choose.getAttribute('data-order-id'))!;
     const row = overlay.locator(`tbody tr[data-item-id="${itemId}"]`).first();
@@ -70,10 +71,12 @@ test.describe('Choose an item from the comparison (Tuesday)', () => {
     await expect(itemEl).toBeVisible({ timeout: 20_000 });
     await expect(itemEl.locator('input[test-id="quantityInput"]')).toHaveValue('1', { timeout: 10_000 });
     await expect(page.locator('#jefb-compare-toast')).toBeAttached();
-    await expect(page.locator('#jefb-compare-toast .t')).toContainText('Confirm Choice');
-
-    // The site's own basket panel shows the item, and the confirm button exists but we never press it.
-    await expect(page.locator('button[test-id="submitButton"]')).toBeVisible();
+    // Depending on how much of today's budget is left, the site shows Confirm Choice (subsidised) or Pay (card).
+    // Either way we never press it.
+    const confirmOrPay = page.locator('button[test-id="submitButton"], button[test-id="payButton"]');
+    await expect(confirmOrPay.first()).toBeVisible();
+    const isPay = (await page.locator('button[test-id="payButton"]').count()) > 0;
+    await expect(page.locator('#jefb-compare-toast .t')).toContainText(isPay ? 'card payment' : 'Confirm Choice');
     expect(blockedWrites, 'no write request should have been attempted').toEqual([]);
 
     // Undo: press - so the basket is empty again.
@@ -90,7 +93,7 @@ test.describe('Choose an item from the comparison (Tuesday)', () => {
     await expect(overlay.locator('.status')).toHaveText(shownBefore!);
 
     // Choose from a different provider while still on this provider's page: goes back to the list in-app first.
-    const other = overlay.locator(`button.choose[data-type="SingleItem"]:not([disabled]):not([data-order-id="${orderId}"])`).first();
+    const other = overlay.locator(`button.choose[data-type="SingleItem"][data-vendor-chosen="0"]:not([disabled]):not([data-order-id="${orderId}"])`).first();
     const otherItem = (await other.getAttribute('data-item-id'))!;
     const otherOrder = (await other.getAttribute('data-order-id'))!;
     await other.click();

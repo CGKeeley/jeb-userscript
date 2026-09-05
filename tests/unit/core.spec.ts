@@ -9,6 +9,7 @@ import {
   possibleDietaries,
   sortRows,
   contrastWithWhite,
+  formatPrice,
   remainingBudget,
   toMarkdown,
   VENDOR_COLORS,
@@ -120,6 +121,7 @@ function row(over: Partial<Row> & { name: string; price: number }): Row {
     vendorLocationName: '',
     vendorLogo: null,
     vendorColor: '#000',
+    vendorChosen: false,
     orderId: 'o',
     orderHumanId: 1,
     slot: '12:00 - 12:30',
@@ -210,6 +212,11 @@ test.describe('sortRows', () => {
 test('every provider colour is readable with white text (contrast >= 4.5)', () => {
   for (const c of VENDOR_COLORS) expect(contrastWithWhite(c), c).toBeGreaterThanOrEqual(4.5);
   expect(new Set(VENDOR_COLORS).size).toBe(VENDOR_COLORS.length);
+});
+
+test('formatPrice handles negatives', () => {
+  expect(formatPrice(-1)).toBe('-£1.00');
+  expect(formatPrice(7.5)).toBe('£7.50');
 });
 
 test('remaining budget subtracts every confirmed order on the day', () => {

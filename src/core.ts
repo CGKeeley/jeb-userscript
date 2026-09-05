@@ -141,6 +141,7 @@ export function flattenSummary(summary: Summary, option: EaterOption, slot: stri
         vendorLocationName: option.vendorLocationName || it.selectedVendorLocation?.name || '',
         vendorLogo: option.vendorImage?.[0]?.thumbnail ?? null,
         vendorColor: color,
+        vendorChosen: option.eaterCartStatus === 'confirmed' || (option.itemIds?.length ?? 0) > 0,
         orderId: option.orderId,
         orderHumanId: option.orderHumanId,
         slot,
@@ -225,7 +226,7 @@ export function sortRows(rows: Row[], s: SortState): Row[] {
 }
 
 export function formatPrice(n: number): string {
-  return `£${n.toFixed(2)}`;
+  return n < 0 ? `-£${(-n).toFixed(2)}` : `£${n.toFixed(2)}`;
 }
 
 /** WCAG relative luminance contrast of a hex colour against white. */
@@ -271,7 +272,7 @@ export function toMarkdown(rows: Row[], meta: MarkdownMeta): string {
   out.push(`# Lunch options · ${meta.dayLabel}`, '');
   if (meta.budget != null) {
     const spentTxt = meta.spent.length ? ` · already spent ${formatPrice(meta.spent.reduce((a, s) => a + s.cost, 0))} on ${meta.spent.map((s) => `${s.itemNames.join(', ')} (${s.vendorName})`).join('; ')}` : '';
-    out.push(`Subsidised budget for the day: ${formatPrice(meta.budget)}${spentTxt}. Remaining: ${formatPrice(meta.remaining ?? meta.budget)}. Anything above the remaining budget needs a personal top-up of the difference.`);
+    out.push(`Subsidised budget for the day: ${formatPrice(meta.budget)}${spentTxt}. Remaining: ${formatPrice(meta.remaining ?? meta.budget)}. ${(meta.remaining ?? meta.budget) <= 0 ? 'The budget is used up, so every item below is full price (card payment).' : 'Anything above the remaining budget needs a personal top-up of the difference.'}`);
   }
   out.push(`Showing ${rows.length} of ${meta.totalRows} items${meta.filterSummary ? ` (${meta.filterSummary})` : ''}.`, '');
   const bySlot = new Map<string, Map<string, Row[]>>();

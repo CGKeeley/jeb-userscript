@@ -129,6 +129,7 @@ export interface Row {
   vendorLocationName: string;
   vendorLogo: string | null;
   vendorColor: string;
+  vendorChosen: boolean; // eater already has a confirmed order with this vendor
   orderId: string;
   orderHumanId: number;
   slot: string;

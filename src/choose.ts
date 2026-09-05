@@ -98,8 +98,13 @@ export async function finishChoose(itemEl: HTMLElement, name: string, type: Row[
   const plus = itemEl.querySelector<HTMLButtonElement>('button[test-id="increment"]');
   if (type === 'SingleItem' && plus && !plus.disabled) {
     if (currentQuantity(itemEl) === 0) plus.click();
-    await sleep(300);
-    toast(`"${name}" is in your basket. Review it on the right and click Confirm Choice to order.`, 12000);
+    await sleep(600);
+    const pay = document.querySelector<HTMLButtonElement>('button[test-id="payButton"]');
+    if (pay) {
+      toast(`"${name}" is in your basket. Your subsidised budget for today is used up, so the site shows "${pay.textContent?.trim()}": pressing it is a card payment.`, 20000);
+    } else {
+      toast(`"${name}" is in your basket. Review it on the right and click Confirm Choice to order.`, 12000);
+    }
   } else {
     toast(`Pick the options for "${name}", add it, then click Confirm Choice to order.`, 12000);
   }

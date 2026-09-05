@@ -404,6 +404,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   };
   const overTitle = (price: number) => {
     const lim = limit()!;
+    if (lim <= 0) return `Full price ${formatPrice(price)}: today's budget is used up`;
     return state.spent.length ? `${formatPrice(price - lim)} top-up: only ${formatPrice(lim)} of the budget is left today` : `Over the ${formatPrice(lim)} budget by ${formatPrice(price - lim)}`;
   };
 
@@ -440,7 +441,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
 
   function chooseButton(r: Row): HTMLButtonElement {
-    const b = h('button', { class: 'choose', type: 'button', 'data-item-id': r.itemId, 'data-order-id': r.orderId, 'data-type': r.type }, r.type === 'SingleItem' ? 'Choose' : 'Choose…');
+    const b = h('button', { class: 'choose', type: 'button', 'data-item-id': r.itemId, 'data-order-id': r.orderId, 'data-type': r.type, 'data-vendor-chosen': r.vendorChosen ? '1' : '0' }, r.type === 'SingleItem' ? 'Choose' : 'Choose…');
     if (r.capacity === 'SOLD_OUT') b.disabled = true;
     b.title = r.type === 'SingleItem' ? 'Open this provider and add the item to your basket. You then confirm on their page.' : 'Open this provider at this item so you can pick its options.';
     b.addEventListener('click', (e) => {
@@ -555,6 +556,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
       budgetEl.append('Budget ', h('b', {}, formatPrice(state.budget)));
       if (state.spent.length) {
         budgetEl.append(` · spent ${formatPrice(state.spent.reduce((a, s) => a + s.cost, 0))} on ${state.spent.map((s) => s.vendorName).join(', ')} · remaining `, h('b', { class: state.remaining! > 0 ? 'pos' : 'neg' }, formatPrice(state.remaining!)));
+        if (state.remaining! <= 0) budgetEl.append(h('span', { title: 'Anything else you choose today is a full-price card payment.' }, ' · budget used up: everything is full price'));
       }
     } else {
       budgetEl.textContent = 'Budget: loading…';

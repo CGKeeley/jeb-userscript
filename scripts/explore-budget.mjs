@@ -1,4 +1,5 @@
-// Prints budget-related fields per cart / vendor order so we can show remaining budget correctly.
+// Prints, for every vendor order on the first few days, the cart endpoint's availableBudget and what
+// (if anything) has been ordered, to learn how the subsidy is shared across slots and vendors.
 import { chromium } from '@playwright/test';
 const BASE = 'https://app.business.just-eat.co.uk';
 const ctx = await chromium.launchPersistentContext('auth/profile', { headless: false });
@@ -11,17 +12,15 @@ const out = await page.evaluate(async () => {
   const carts = await (await fetch(`/api/eaters/me/carts?from=${from.toISOString()}`)).json();
   const lines = [];
   for (const c of carts.items.slice(0, 4)) {
-    lines.push(`CART ${c.requestedDeliveryDate} group=${c.orderId} subsidised=${c.isSubsidisedChoice}`);
+    lines.push(`CART ${c.requestedDeliveryDate} subsidised=${c.isSubsidisedChoice} singleVendor=${c.enforceSingleVendorChoice}`);
     for (const o of c.eaterOptions) {
-      const s = await (await fetch(`/api/individual-choice/${o.orderId}/summary`)).json().catch(() => null);
-      const ic = s?.item?.individualChoice ?? {};
-      let cartInfo = '';
-      if (o.itemIds?.length || o.eaterCartStatus) {
-        const cart = await (await fetch(`/api/eaters/me/orders/${o.orderId}/cart`)).json().catch(() => null);
-        const it = cart?.item;
-        cartInfo = ` CART: items=${JSON.stringify(it?.cartItems?.map((x) => ({ item: x.item ?? x.itemId ?? x.id, qty: x.quantity, type: x.type })))} itemsCost=${JSON.stringify(it?.costBreakdown?.itemsCost?.gross)} eaterTotal=${JSON.stringify(it?.eaterCostBreakdown?.totalEaterCost?.gross)} availableBudget=${it?.costBreakdown?.availableBudget} keys=${Object.keys(it ?? {}).join(',')}`;
-      }
-      lines.push(`  ${o.vendorName} status=${JSON.stringify(o.eaterCartStatus)} topUp=${JSON.stringify(o.topUpValue)} items=${JSON.stringify(o.itemNames)} | summary budget=${ic.budget} advanced=${ic.advancedBudgeting} hidden=${s?.item?.useHiddenBudget} keys=${Object.keys(ic).join(',')}${cartInfo}`);
+      if (o.vendorLocationCapacityStatus === 'SOLD_OUT') continue;
+      const r = await fetch(`/api/eaters/me/orders/${o.orderId}/cart`);
+      const cart = r.ok ? await r.json() : null;
+      const it = cart?.item;
+      lines.push(
+        `  ${o.vendorName.padEnd(28)} status=${String(o.eaterCartStatus).padEnd(9)} http=${r.status} items=${it?.cartItems?.length ?? '-'} itemsCost=${it?.costBreakdown?.itemsCost?.gross ?? '-'} eaterPays=${it?.eaterCostBreakdown?.totalEaterCost?.gross ?? '-'} availableBudget=${it?.costBreakdown?.availableBudget ?? '-'} eaterAvail=${it?.eaterCostBreakdown?.availableBudget ?? '-'}`,
+      );
     }
   }
   return lines.join('\n');
