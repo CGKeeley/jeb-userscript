@@ -49,7 +49,11 @@ test.describe('bookmarklet on /my-meals', () => {
     page.on('framenavigated', (f) => f === page.mainFrame() && console.log(`[live] navigated ${new Date().toISOString()} ${f.url()}`));
     await page.goto(`${BASE}/my-meals`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('li[test-id="days"]').first()).toBeVisible({ timeout: 30_000 });
-    await page.evaluate(() => localStorage.removeItem('jefb-compare-view'));
+    await page.evaluate(() => {
+      localStorage.removeItem('jefb-compare-view');
+      localStorage.removeItem('jefb-compare-filters');
+      localStorage.removeItem('jefb-compare-favs');
+    });
     const consent = page.getByRole('button', { name: 'Accept All' });
     if (await consent.isVisible().catch(() => false)) {
       // CookieYes reloads the page shortly after consent is given; wait that out.
@@ -204,6 +208,89 @@ test.describe('bookmarklet on /my-meals', () => {
     await expect(page.locator('#jefb-compare-toast .t')).toContainText('Copied');
   });
 
+  test('type chips, within-budget toggle, favourites and lightbox', async () => {
+    const overlay = await ensureOverlay();
+    await overlay.locator('.seg label', { hasText: 'Match any' }).click();
+    for (const d of ['Vegetarian', 'Pescatarian']) {
+      const box = overlay.locator('label.chk', { hasText: d }).locator('input');
+      if (await box.isChecked()) await box.click();
+    }
+    const total = await overlay.locator('tbody tr').count();
+
+    // Type: untick Mains -> fewer rows; all remaining rows are non-mains (we cannot see kind directly, so check counts add up).
+    await overlay.locator('label.chk', { hasText: 'Mains' }).click();
+    const nonMains = await overlay.locator('tbody tr').count();
+    expect(nonMains).toBeLessThan(total);
+    await overlay.locator('label.chk', { hasText: 'Mains' }).click();
+    for (const k of ['Sides', 'Desserts', 'Other']) await overlay.locator('label.chk', { hasText: k }).click();
+    const mains = await overlay.locator('tbody tr').count();
+    expect(mains + nonMains).toBe(total);
+    for (const k of ['Sides', 'Desserts', 'Other']) await overlay.locator('label.chk', { hasText: k }).click();
+    await expect(overlay.locator('tbody tr')).toHaveCount(total);
+
+    // Within budget: every remaining price <= remaining budget (or none if it is used up).
+    const budgetTxt = (await overlay.locator('header .budget').textContent())!;
+    const money = [...budgetTxt.matchAll(/(-?)£(\d+\.\d\d)/g)].map((m) => Number(m[1] + m[2]));
+    const remaining = money[money.length - 1];
+    await overlay.locator('label.chk', { hasText: 'Within budget' }).click();
+    const prices = (await overlay.locator('td.price').allTextContents()).map((p) => Number(p.replace(/[£-]/g, '')));
+    for (const p of prices) expect(p).toBeLessThanOrEqual(remaining);
+    if (remaining <= 0) expect(prices).toHaveLength(0);
+    await overlay.locator('label.chk', { hasText: 'Within budget' }).click();
+    await expect(overlay.locator('tbody tr')).toHaveCount(total);
+
+    // Favourites: star the first row, filter to favourites, see only it, unstar.
+    const firstName = (await overlay.locator('tbody tr .name').first().evaluate((e) => e.textContent ?? '')).replace(/[★☆]/g, '').trim();
+    await overlay.locator('tbody tr button.star').first().click();
+    await expect(overlay.locator('tbody tr button.star').first()).toHaveAttribute('data-fav', '1');
+    await overlay.locator('label.chk.fav').click();
+    await expect(overlay.locator('tbody tr')).toHaveCount(1);
+    expect((await overlay.locator('tbody tr .name').first().textContent())!.replace(/[★☆]/g, '').trim()).toBe(firstName);
+    await overlay.locator('tbody tr button.star').first().click();
+    await expect(overlay.locator('tbody tr')).toHaveCount(0);
+    await overlay.locator('label.chk.fav').click();
+    await expect(overlay.locator('tbody tr')).toHaveCount(total);
+
+    // Lightbox: click a thumbnail, Escape closes the lightbox but keeps the overlay.
+    await overlay.locator('td.item img.thumb').first().click();
+    await expect(overlay.locator('.lightbox img')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(overlay.locator('.lightbox')).toHaveCount(0);
+    await expect(overlay.locator('.backdrop')).toBeVisible();
+  });
+
+  test('filters persist across a fresh run of the bookmarklet', async () => {
+    const overlay = await ensureOverlay();
+    await overlay.locator('label.chk', { hasText: 'Vegan' }).click();
+    await overlay.locator('.seg label', { hasText: 'Match all' }).click();
+    await overlay.locator('label.chk', { hasText: 'Desserts' }).click();
+    const firstVendor = overlay.locator('label.chk.vendor').first();
+    const vendorName = (await firstVendor.textContent())!.trim();
+    await firstVendor.click();
+    await overlay.locator('input.num').fill('12');
+    await overlay.locator('button.close').click();
+    await expect(overlay).toHaveCount(0);
+
+    // Simulate a fresh page: reload and run the bookmarklet again.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('li[test-id="days"]').first()).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(2500);
+    await page.evaluate(code);
+    const again = await ensureOverlay();
+    await expect(again.locator('label.chk', { hasText: 'Vegan' }).locator('input')).toBeChecked();
+    await expect(again.locator('label.chk', { hasText: 'Vegetarian' }).locator('input')).not.toBeChecked();
+    await expect(again.locator('.seg label', { hasText: 'Match all' }).locator('input')).toBeChecked();
+    await expect(again.locator('label.chk', { hasText: 'Desserts' }).locator('input')).not.toBeChecked();
+    await expect(again.locator('label.chk.vendor', { hasText: vendorName }).locator('input')).not.toBeChecked();
+    await expect(again.locator('input.num')).toHaveValue('12');
+    // Restore defaults for the remaining tests.
+    await again.locator('label.chk', { hasText: 'Vegan' }).click();
+    await again.locator('.seg label', { hasText: 'Match any' }).click();
+    await again.locator('label.chk', { hasText: 'Desserts' }).click();
+    await again.locator('label.chk.vendor', { hasText: vendorName }).click();
+    await again.locator('input.num').fill('');
+  });
+
   test('search and sort by name work; Escape closes', async () => {
     const overlay = await ensureOverlay();
     await overlay.locator('.seg label', { hasText: 'Match any' }).click();
@@ -213,7 +300,9 @@ test.describe('bookmarklet on /my-meals', () => {
     }
 
     await overlay.locator('th', { hasText: 'Item' }).click();
-    const names = await overlay.locator('tbody tr .name').evaluateAll((els) => els.map((e) => e.firstChild?.textContent ?? ''));
+    const names = await overlay.locator('tbody tr .name').evaluateAll((els) =>
+      els.map((e) => [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent ?? '').join('').trim()),
+    );
     const sorted = [...names].sort((a, b) => a.localeCompare(b));
     expect(names).toEqual(sorted);
 

@@ -1,5 +1,5 @@
 // Pure data logic: flattening menus into rows, filtering, sorting. No DOM access here so it is unit-testable.
-import type { BaseItem, Cart, CartsResponse, Dietaries, DietKey, EaterOption, Row, Summary } from './types';
+import type { BaseItem, Cart, CartsResponse, Dietaries, DietKey, EaterOption, FoodKind, Row, Summary } from './types';
 
 export const DIET_KEYS: DietKey[] = ['vegetarian', 'vegan', 'pescatarian', 'noGluten', 'noDairy', 'noNuts', 'halal'];
 
@@ -108,6 +108,22 @@ function isAvailableAtLocation(item: BaseItem, locationId: string | null | undef
   return a.locationIds.includes(locationId);
 }
 
+export const FOOD_KINDS: FoodKind[] = ['main', 'side', 'dessert', 'other'];
+export const FOOD_KIND_LABELS: Record<FoodKind, string> = { main: 'Mains', side: 'Sides', dessert: 'Desserts', other: 'Other' };
+
+/** The API's foodType, normalised. Bundles carry no foodType but are meals, so they count as mains. */
+export function foodKind(item: BaseItem): FoodKind {
+  const t = item.foodType;
+  if (t === 'main' || t === 'side' || t === 'dessert') return t;
+  if (!t && item.type === 'ItemBundle') return 'main';
+  return 'other';
+}
+
+/** Stable key for favourites: same dish name from the same vendor, whatever day or menu id. */
+export function favKey(r: Pick<Row, 'vendorId' | 'name'>): string {
+  return `${r.vendorId}|${r.name.trim().toLowerCase()}`;
+}
+
 function allergenList(item: BaseItem): string[] {
   if (!item.allergens) return [];
   return Object.entries(item.allergens)
@@ -137,6 +153,9 @@ export function flattenSummary(summary: Summary, option: EaterOption, slot: stri
         foodType: item.foodType ?? '',
         image: item.images?.[0]?.thumbnail ?? null,
         imageLarge: item.images?.[0]?.medium ?? item.images?.[0]?.large ?? item.images?.[0]?.thumbnail ?? null,
+        imageXL: item.images?.[0]?.large ?? item.images?.[0]?.medium ?? item.images?.[0]?.thumbnail ?? null,
+        kind: foodKind(item),
+        vendorId: option.vendorId || it.vendor.id,
         vendorName: option.vendorName || it.vendor.name,
         vendorLocationName: option.vendorLocationName || it.selectedVendorLocation?.name || '',
         vendorLogo: option.vendorImage?.[0]?.thumbnail ?? null,
@@ -169,10 +188,15 @@ export interface FilterState {
   vendors: Set<string> | null; // orderIds; null = all
   hideSoldOut: boolean;
   maxPrice: number | null;
+  kinds: Set<FoodKind> | null; // null = all
+  withinBudget: boolean;
+  budgetLimit: number | null; // what withinBudget compares against (remaining budget)
+  favouritesOnly: boolean;
+  favourites: Set<string>; // favKey()s
 }
 
 export function defaultFilter(): FilterState {
-  return { diets: new Set(), mode: 'any', search: '', slots: null, vendors: null, hideSoldOut: true, maxPrice: null };
+  return { diets: new Set(), mode: 'any', search: '', slots: null, vendors: null, hideSoldOut: true, maxPrice: null, kinds: null, withinBudget: false, budgetLimit: null, favouritesOnly: false, favourites: new Set() };
 }
 
 export function matchesDiet(row: Row, f: FilterState): boolean {
@@ -190,6 +214,9 @@ export function applyFilter(rows: Row[], f: FilterState): Row[] {
     if (f.slots && !f.slots.has(r.slot)) return false;
     if (f.vendors && !f.vendors.has(r.orderId)) return false;
     if (f.maxPrice != null && r.price > f.maxPrice) return false;
+    if (f.withinBudget && f.budgetLimit != null && r.price > f.budgetLimit) return false;
+    if (f.kinds && !f.kinds.has(r.kind)) return false;
+    if (f.favouritesOnly && !f.favourites.has(favKey(r))) return false;
     if (!matchesDiet(r, f)) return false;
     if (q) {
       const hay = `${r.name} ${r.description} ${r.vendorName} ${r.section} ${r.ingredients.join(' ')}`.toLowerCase();
@@ -255,6 +282,7 @@ export interface MarkdownMeta {
   remaining: number | null;
   filterSummary: string;
   totalRows: number;
+  favourites?: Set<string>;
 }
 
 function dietList(r: Row): string {
@@ -301,7 +329,8 @@ export function toMarkdown(rows: Row[], meta: MarkdownMeta): string {
         if (r.type === 'CustomItem') bits.push('has options to choose');
         if (r.type === 'ItemBundle') bits.push('bundle with choices');
         if (r.chosen) bits.push('ALREADY CHOSEN');
-        bits.push(`section: ${r.section}`);
+        if (meta.favourites?.has(favKey(r))) bits.push('FAVOURITE');
+        bits.push(`${FOOD_KIND_LABELS[r.kind].toLowerCase()}, section: ${r.section}`);
         out.push(`- **${r.name}** — ${bits.join(' · ')}`);
         if (r.description) out.push(`  ${r.description.replace(/\s*\n\s*/g, ' ')}`);
         if (r.allergens.length) out.push(`  Allergens: ${r.allergens.join(', ')}`);

@@ -112,6 +112,8 @@ export interface CartsResponse {
   items: Cart[];
 }
 
+export type FoodKind = 'main' | 'side' | 'dessert' | 'other';
+
 /** One flattened, comparable row in the comparison table. */
 export interface Row {
   key: string;
@@ -125,6 +127,9 @@ export interface Row {
   foodType: string;
   image: string | null;
   imageLarge: string | null;
+  imageXL: string | null;
+  kind: FoodKind;
+  vendorId: string;
   vendorName: string;
   vendorLocationName: string;
   vendorLogo: string | null;

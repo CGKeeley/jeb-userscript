@@ -32,6 +32,7 @@ test.describe('Choose an item from the comparison (Tuesday)', () => {
     await page.goto(`${BASE}/my-meals`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('li[test-id="days"]').first()).toBeVisible({ timeout: 30_000 });
     await page.waitForTimeout(2500); // the app re-navigates once shortly after load
+    await page.evaluate(() => localStorage.removeItem('jefb-compare-filters'));
   });
 
   test.afterAll(async () => {
@@ -58,7 +59,7 @@ test.describe('Choose an item from the comparison (Tuesday)', () => {
     const itemId = (await choose.getAttribute('data-item-id'))!;
     const orderId = (await choose.getAttribute('data-order-id'))!;
     const row = overlay.locator(`tbody tr[data-item-id="${itemId}"]`).first();
-    const itemName = (await row.locator('.name').evaluate((e) => e.firstChild?.textContent ?? ''))!.trim();
+    const itemName = (await row.locator('.name').evaluate((e) => [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent ?? '').join('')))!.trim();
     const vendor = (await row.locator('td.vendor a').textContent())!.trim();
     console.log(`[choose] ${itemName} from ${vendor} (order ${orderId})`);
     await choose.click();

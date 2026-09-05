@@ -22,6 +22,11 @@ buttons. The site reloads itself once shortly after first load, so if the button
   provider name linking to that provider's ordering page (`/my-meals/<orderId>`).
 - Two views, switchable in the header: **Tiles** (default) with large photos, and a **Table**. The choice is
   remembered. Each provider gets a colour (tile top border, table row stripe) and its logo sits on the tile.
+- Type chips (Mains, Sides, Desserts, Other), a **Within budget** toggle that hides anything needing a top-up,
+  and a **★ Favourites** toggle. Star any item (tile corner or table row); favourites are remembered by
+  vendor and dish name, so they carry across days.
+- Filters (diets, mode, type, providers by name, slots, max price, within budget, favourites) persist in the
+  browser between runs of the bookmarklet. Click a photo to see it large; Escape closes it.
 - Provider checkboxes in the filter bar: all on by default; untick to drop a provider (OR across ticked ones).
 - Sorted by price descending by default. Click a table header or use the sort dropdown.
 - Diet filter: Vegetarian, Vegan, Pescatarian, Gluten free, Dairy free, Nut free, Halal.

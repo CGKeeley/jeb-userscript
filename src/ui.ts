@@ -13,13 +13,16 @@ import {
   toMarkdown,
   vendorColor,
   DIET_LABELS as DL,
+  favKey,
+  FOOD_KINDS,
+  FOOD_KIND_LABELS,
   type Spend,
   type FilterState,
   type SortKey,
   type SortState,
 } from './core';
 import { chooseItem, toast } from './choose';
-import type { Cart, EaterOption, Row } from './types';
+import type { Cart, DietKey, EaterOption, FoodKind, Row } from './types';
 
 export interface OverlayOptions {
   dayLabel: string;
@@ -110,6 +113,15 @@ tr[data-order-id] td.item { border-left: 5px solid var(--vc, transparent); }
 label.chk.vendor { border-color: var(--vc); }
 label.chk.vendor:has(input:checked) { background: var(--vc); border-color: var(--vc); color: #fff; }
 .group .quick { color: #0a5bd6; cursor: pointer; font-size: 12.5px; text-decoration: underline; }
+button.star { border: 0; background: transparent; cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; color: #c9ced8; vertical-align: -2px; }
+button.star.on { color: #f5b301; }
+button.star:hover { color: #f5b301; }
+.tile button.star { position: absolute; top: 9px; left: 8px; font-size: 22px; background: rgba(255,255,255,.85); border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; padding: 0; }
+.tile .photo, .thumb { cursor: zoom-in; }
+.lightbox { position: fixed; inset: 0; z-index: 2147483002; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; cursor: zoom-out; }
+.lightbox img { max-width: 92vw; max-height: 82vh; border-radius: 8px; box-shadow: 0 10px 50px rgba(0,0,0,.6); }
+.lightbox .cap { color: #fff; font-size: 15px; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+label.chk.fav:has(input:checked) { background: #f5b301; border-color: #f5b301; color: #1f2430; }
 .tile:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); }
 .tile .photo { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #f0f1f4; display: block; }
 .tile .nophoto { width: 100%; aspect-ratio: 4 / 3; background: #f0f1f4; display: flex; align-items: center; justify-content: center; color: #9aa1ae; font-size: 12px; }
@@ -144,6 +156,37 @@ function safeSet(k: string, v: string): void {
     localStorage.setItem(k, v);
   } catch {
     /* ignore */
+  }
+}
+
+const FILTERS_KEY = 'jefb-compare-filters';
+const FAVS_KEY = 'jefb-compare-favs';
+
+/** The parts of the filter worth remembering between runs. Vendors and slots are stored by name/label. */
+interface SavedFilters {
+  diets: DietKey[];
+  mode: 'any' | 'all';
+  maxPrice: number | null;
+  withinBudget: boolean;
+  favouritesOnly: boolean;
+  kindsOff: FoodKind[];
+  vendorsOff: string[];
+  slotsOff: string[];
+}
+
+function loadSaved(): Partial<SavedFilters> {
+  try {
+    return JSON.parse(safeGet(FILTERS_KEY) ?? '{}') as Partial<SavedFilters>;
+  } catch {
+    return {};
+  }
+}
+
+function loadFavs(): Set<string> {
+  try {
+    return new Set(JSON.parse(safeGet(FAVS_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
   }
 }
 
@@ -188,9 +231,21 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
   const slotNames = [...new Set(options.map((o) => o.slot))];
 
+  const saved = loadSaved();
+  const initial = defaultFilter();
+  initial.diets = new Set((saved.diets ?? []).filter((k): k is DietKey => DIET_KEYS.includes(k)));
+  initial.mode = saved.mode === 'all' ? 'all' : 'any';
+  initial.maxPrice = typeof saved.maxPrice === 'number' ? saved.maxPrice : null;
+  initial.withinBudget = !!saved.withinBudget;
+  initial.favouritesOnly = !!saved.favouritesOnly;
+  initial.kinds = new Set(FOOD_KINDS.filter((k) => !(saved.kindsOff ?? []).includes(k)));
+  initial.favourites = loadFavs();
+  const vendorsOff = new Set(saved.vendorsOff ?? []);
+  const slotsOff = new Set(saved.slotsOff ?? []);
+
   const state = {
     rows: [] as Row[],
-    filter: defaultFilter() as FilterState,
+    filter: initial as FilterState,
     sort: { key: 'price', dir: 'desc' } as SortState,
     loaded: 0,
     errors: [] as string[],
@@ -215,7 +270,9 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     render();
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && !backdrop.hidden) hide();
+    if (e.key !== 'Escape') return;
+    if (lightbox) closeLightbox();
+    else if (!backdrop.hidden) hide();
   };
   document.addEventListener('keydown', onKey);
 
@@ -256,7 +313,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   const dietGroup = h('div', { class: 'group' }, h('span', { class: 'title' }, 'Diet'));
   for (const k of DIET_KEYS) {
     dietGroup.append(
-      checkbox(DIET_LABELS[k], false, (v) => {
+      checkbox(DIET_LABELS[k], state.filter.diets.has(k), (v) => {
         if (v) state.filter.diets.add(k);
         else state.filter.diets.delete(k);
         render();
@@ -277,7 +334,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   const vendorBoxes: HTMLInputElement[] = [];
   for (const { option: o, color } of options) {
     const input = h('input', { type: 'checkbox', 'data-order-id': o.orderId });
-    input.checked = true;
+    input.checked = !vendorsOff.has(o.vendorName);
+    if (!input.checked) state.filter.vendors!.delete(o.orderId);
     input.addEventListener('change', () => {
       if (input.checked) state.filter.vendors!.add(o.orderId);
       else state.filter.vendors!.delete(o.orderId);
@@ -304,10 +362,11 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
 
   if (slotNames.length > 1) {
     const slotGroup = h('div', { class: 'group' }, h('span', { class: 'title' }, 'Slot'));
-    state.filter.slots = new Set(slotNames);
+    state.filter.slots = new Set(slotNames.filter((s) => !slotsOff.has(s)));
+    if (state.filter.slots.size === 0) state.filter.slots = new Set(slotNames);
     for (const s of slotNames) {
       slotGroup.append(
-        checkbox(s, true, (v) => {
+        checkbox(s, state.filter.slots.has(s), (v) => {
           if (v) state.filter.slots!.add(s);
           else state.filter.slots!.delete(s);
           render();
@@ -318,12 +377,34 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
 
   // type=text rather than search: Escape in a search box clears it natively, and Escape is our hide key.
+  const kindGroup = h('div', { class: 'group' }, h('span', { class: 'title' }, 'Type'));
+  for (const k of FOOD_KINDS) {
+    kindGroup.append(
+      checkbox(FOOD_KIND_LABELS[k], state.filter.kinds!.has(k), (v) => {
+        if (v) state.filter.kinds!.add(k);
+        else state.filter.kinds!.delete(k);
+        render();
+      }),
+    );
+  }
+  controls.append(kindGroup);
+
+  const withinBudget = checkbox('Within budget', state.filter.withinBudget, (v) => {
+    state.filter.withinBudget = v;
+    render();
+  }, 'chk', 'Only items you can get without a top-up, given what is left of today\u2019s budget');
+  const favOnly = checkbox('\u2605 Favourites', state.filter.favouritesOnly, (v) => {
+    state.filter.favouritesOnly = v;
+    render();
+  }, 'chk fav', 'Only items you have starred');
+
   const search = h('input', { class: 'search', type: 'text', placeholder: 'Search name, description, ingredients…' });
   search.addEventListener('input', () => {
     state.filter.search = search.value;
     render();
   });
   const maxPrice = h('input', { class: 'num', type: 'number', step: '0.5', min: '0', placeholder: 'Max £' });
+  if (state.filter.maxPrice != null) maxPrice.value = String(state.filter.maxPrice);
   maxPrice.addEventListener('input', () => {
     state.filter.maxPrice = maxPrice.value === '' ? null : Number(maxPrice.value);
     render();
@@ -349,7 +430,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     sortSelect.selectedIndex = i < 0 ? 0 : i;
   };
   const status = h('span', { class: 'status' });
-  controls.append(h('div', { class: 'group' }, search, maxPrice, sortSelect, status));
+  controls.append(h('div', { class: 'group' }, search, maxPrice, withinBudget, favOnly, sortSelect, status));
 
   // Table
   const wrap = h('div', { class: 'tablewrap' });
@@ -409,7 +490,55 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   };
 
   function visibleRows(): Row[] {
+    state.filter.budgetLimit = state.remaining ?? state.budget;
     return sortRows(applyFilter(state.rows, state.filter), state.sort);
+  }
+
+  function saveFilters(): void {
+    const f = state.filter;
+    const data: SavedFilters = {
+      diets: [...f.diets],
+      mode: f.mode,
+      maxPrice: f.maxPrice,
+      withinBudget: f.withinBudget,
+      favouritesOnly: f.favouritesOnly,
+      kindsOff: FOOD_KINDS.filter((k) => !f.kinds!.has(k)),
+      vendorsOff: options.filter((o) => !f.vendors!.has(o.option.orderId)).map((o) => o.option.vendorName),
+      slotsOff: slotNames.filter((s) => f.slots && !f.slots.has(s)),
+    };
+    safeSet(FILTERS_KEY, JSON.stringify(data));
+  }
+
+  function toggleFav(r: Row): void {
+    const k = favKey(r);
+    if (state.filter.favourites.has(k)) state.filter.favourites.delete(k);
+    else state.filter.favourites.add(k);
+    safeSet(FAVS_KEY, JSON.stringify([...state.filter.favourites]));
+    render();
+  }
+
+  function starButton(r: Row): HTMLButtonElement {
+    const on = state.filter.favourites.has(favKey(r));
+    const b = h('button', { class: `star${on ? ' on' : ''}`, type: 'button', 'data-fav': on ? '1' : '0', title: on ? 'Remove from favourites' : 'Add to favourites' }, on ? '\u2605' : '\u2606');
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleFav(r);
+    });
+    return b;
+  }
+
+  let lightbox: HTMLElement | null = null;
+  function closeLightbox(): void {
+    lightbox?.remove();
+    lightbox = null;
+  }
+  function openLightbox(r: Row): void {
+    closeLightbox();
+    const src = r.imageXL ?? r.imageLarge ?? r.image;
+    if (!src) return;
+    lightbox = h('div', { class: 'lightbox' }, h('img', { src, alt: r.name }), h('div', { class: 'cap' }, `${r.name} \u00b7 ${r.vendorName} \u00b7 ${formatPrice(r.price)}`));
+    lightbox.addEventListener('click', closeLightbox);
+    shadow.append(lightbox);
   }
 
   function filterSummary(): string {
@@ -419,11 +548,14 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     if (state.filter.slots && state.filter.slots.size < slotNames.length) parts.push(`slot ${[...state.filter.slots].join(', ')}`);
     if (state.filter.search.trim()) parts.push(`search "${state.filter.search.trim()}"`);
     if (state.filter.maxPrice != null) parts.push(`max ${formatPrice(state.filter.maxPrice)}`);
+    if (state.filter.withinBudget) parts.push('within budget');
+    if (state.filter.kinds && state.filter.kinds.size < FOOD_KINDS.length) parts.push(`type: ${[...state.filter.kinds].map((k) => FOOD_KIND_LABELS[k]).join(', ')}`);
+    if (state.filter.favouritesOnly) parts.push('favourites only');
     return parts.join('; ');
   }
 
   async function copyMarkdown(): Promise<void> {
-    const md = toMarkdown(visibleRows(), { dayLabel: opts.dayLabel, budget: state.budget, spent: state.spent, remaining: state.remaining, filterSummary: filterSummary(), totalRows: state.rows.length });
+    const md = toMarkdown(visibleRows(), { dayLabel: opts.dayLabel, budget: state.budget, spent: state.spent, remaining: state.remaining, filterSummary: filterSummary(), totalRows: state.rows.length, favourites: state.filter.favourites });
     let ok = false;
     try {
       await navigator.clipboard.writeText(md);
@@ -455,8 +587,12 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   function rowEl(r: Row): HTMLTableRowElement {
     const tr = h('tr', { 'data-item-id': r.itemId, 'data-type': r.type, 'data-order-id': r.orderId, style: `--vc:${r.vendorColor}` });
     const itemCell = h('td', { class: 'item' });
-    if (r.image) itemCell.append(h('img', { class: 'thumb', src: r.image, alt: '', loading: 'lazy' }));
-    const nameLine = h('div', { class: 'name' }, r.name);
+    if (r.image) {
+      const thumb = h('img', { class: 'thumb', src: r.image, alt: '', loading: 'lazy', title: 'Click to enlarge' });
+      thumb.addEventListener('click', () => openLightbox(r));
+      itemCell.append(thumb);
+    }
+    const nameLine = h('div', { class: 'name' }, starButton(r), r.name);
     if (r.type === 'CustomItem') nameLine.append(h('span', { class: 'badge type', title: 'Has options to choose from' }, 'options'));
     if (r.type === 'ItemBundle') nameLine.append(h('span', { class: 'badge type', title: 'Bundle of several items' }, 'bundle'));
     if (r.spicy) nameLine.append(h('span', { class: 'badge warn' }, 'spicy'));
@@ -492,8 +628,12 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
 
   function tileEl(r: Row): HTMLElement {
     const tile = h('div', { class: 'tile', 'data-item-id': r.itemId, 'data-type': r.type, 'data-order-id': r.orderId, style: `--vc:${r.vendorColor}` });
-    if (r.imageLarge) tile.append(h('img', { class: 'photo', src: r.imageLarge, alt: '', loading: 'lazy' }));
-    else tile.append(h('div', { class: 'nophoto' }, 'No photo'));
+    if (r.imageLarge) {
+      const photo = h('img', { class: 'photo', src: r.imageLarge, alt: '', loading: 'lazy', title: 'Click to enlarge' });
+      photo.addEventListener('click', () => openLightbox(r));
+      tile.append(photo);
+    } else tile.append(h('div', { class: 'nophoto' }, 'No photo'));
+    tile.append(starButton(r));
     const body = h('div', { class: 'body' });
     const over = isOver(r.price);
     body.append(
@@ -531,7 +671,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
 
   function render() {
-    const visible = sortRows(applyFilter(state.rows, state.filter), state.sort);
+    const visible = visibleRows();
+    saveFilters();
     syncSortSelect();
     if (state.view === 'tiles') {
       tiles.replaceChildren(...visible.map(tileEl));

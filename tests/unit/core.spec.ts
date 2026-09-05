@@ -9,6 +9,8 @@ import {
   possibleDietaries,
   sortRows,
   contrastWithWhite,
+  favKey,
+  foodKind,
   formatPrice,
   remainingBudget,
   toMarkdown,
@@ -117,6 +119,9 @@ function row(over: Partial<Row> & { name: string; price: number }): Row {
     foodType: 'main',
     image: null,
     imageLarge: null,
+    imageXL: null,
+    kind: 'main',
+    vendorId: 'v',
     vendorName: 'V',
     vendorLocationName: '',
     vendorLogo: null,
@@ -214,6 +219,28 @@ test('every provider colour is readable with white text (contrast >= 4.5)', () =
   expect(new Set(VENDOR_COLORS).size).toBe(VENDOR_COLORS.length);
 });
 
+test('foodKind normalises the API foodType and treats bundles as mains', () => {
+  expect(foodKind(item({ name: 'a', price: 1, foodType: 'main' }))).toBe('main');
+  expect(foodKind(item({ name: 'b', price: 1, foodType: 'side' }))).toBe('side');
+  expect(foodKind(item({ name: 'c', price: 1, foodType: 'dessert' }))).toBe('dessert');
+  expect(foodKind(item({ name: 'd', price: 1, foodType: 'drink' }))).toBe('other');
+  expect(foodKind(item({ name: 'e', price: 1, type: 'ItemBundle' }))).toBe('main');
+  expect(foodKind(item({ name: 'f', price: 1 }))).toBe('other');
+});
+
+test('kind, within-budget and favourites filters', () => {
+  const rows = [
+    row({ name: 'Burger', price: 12, kind: 'main', vendorId: 'v1' }),
+    row({ name: 'Fries', price: 3, kind: 'side', vendorId: 'v1' }),
+    row({ name: 'Cake', price: 4, kind: 'dessert', vendorId: 'v2' }),
+  ];
+  expect(applyFilter(rows, { ...defaultFilter(), kinds: new Set(['main', 'dessert']) }).map((r) => r.name)).toEqual(['Burger', 'Cake']);
+  expect(applyFilter(rows, { ...defaultFilter(), withinBudget: true, budgetLimit: 5 }).map((r) => r.name)).toEqual(['Fries', 'Cake']);
+  expect(applyFilter(rows, { ...defaultFilter(), withinBudget: true, budgetLimit: null })).toHaveLength(3);
+  const favs = new Set([favKey({ vendorId: 'v1', name: '  fries ' })]);
+  expect(applyFilter(rows, { ...defaultFilter(), favouritesOnly: true, favourites: favs }).map((r) => r.name)).toEqual(['Fries']);
+});
+
 test('formatPrice handles negatives', () => {
   expect(formatPrice(-1)).toBe('-£1.00');
   expect(formatPrice(7.5)).toBe('£7.50');
@@ -239,7 +266,7 @@ test('toMarkdown groups by slot then provider and includes all details', () => {
   expect(md.indexOf('## Delivery slot 12:00 - 12:30')).toBeLessThan(md.indexOf('## Delivery slot 12:30 - 13:00'));
   expect(md).toContain('### Yolk · Soho (2 items)');
   expect(md).toContain('### Shoyu (1 items, almost sold out)');
-  expect(md).toContain('- **Steak** — £14.00 (top-up £6.50) · 700 kcal · spicy · section: Mains');
+  expect(md).toContain('- **Steak** — £14.00 (top-up £6.50) · 700 kcal · spicy · mains, section: Mains');
   expect(md).toContain('  Big steak');
   expect(md).toContain('  Allergens: gluten');
   expect(md).toContain('  Ingredients: beef, bun');
