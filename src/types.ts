@@ -112,6 +112,7 @@ export interface Row {
   section: string;
   foodType: string;
   image: string | null;
+  imageLarge: string | null;
   vendorName: string;
   vendorLocationName: string;
   orderId: string;

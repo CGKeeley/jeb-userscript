@@ -127,6 +127,7 @@ export function flattenSummary(summary: Summary, option: EaterOption, slot: stri
         section: sec.title,
         foodType: item.foodType ?? '',
         image: item.images?.[0]?.thumbnail ?? null,
+        imageLarge: item.images?.[0]?.medium ?? item.images?.[0]?.large ?? item.images?.[0]?.thumbnail ?? null,
         vendorName: option.vendorName || it.vendor.name,
         vendorLocationName: option.vendorLocationName || it.selectedVendorLocation?.name || '',
         orderId: option.orderId,

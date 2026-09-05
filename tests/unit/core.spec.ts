@@ -110,6 +110,7 @@ function row(over: Partial<Row> & { name: string; price: number }): Row {
     section: 'Mains',
     foodType: 'main',
     image: null,
+    imageLarge: null,
     vendorName: 'V',
     vendorLocationName: '',
     orderId: 'o',

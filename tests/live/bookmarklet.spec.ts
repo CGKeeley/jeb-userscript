@@ -122,6 +122,28 @@ test.describe('bookmarklet on /my-meals', () => {
     for (const t of tags) expect(t.includes('V') && t.includes('P')).toBe(true);
   });
 
+  test('tiles view shows one card per item with a large photo, and the sort dropdown works', async () => {
+    const overlay = await ensureOverlay();
+    const rowCount = await overlay.locator('tbody tr').count();
+    await overlay.locator('.seg label', { hasText: 'Tiles' }).click();
+    const tiles = overlay.locator('.tile');
+    await expect(tiles).toHaveCount(rowCount);
+    await expect(overlay.locator('table')).toHaveCount(0);
+    const photos = await overlay.locator('.tile img.photo').evaluateAll((imgs) => imgs.map((i) => (i as HTMLImageElement).src));
+    expect(photos.length).toBeGreaterThan(rowCount / 2);
+    for (const src of photos) expect(src).toMatch(/medium-|large-|thumbnail-/);
+
+    await overlay.locator('select.sort').selectOption({ label: 'Price: low to high' });
+    const prices = await overlay.locator('.tile .price').allTextContents();
+    const nums = prices.map((p) => Number(p.replace('£', '')));
+    for (let i = 1; i < nums.length; i++) expect(nums[i]).toBeGreaterThanOrEqual(nums[i - 1]);
+
+    await overlay.locator('.seg label', { hasText: 'Table' }).click();
+    await expect(overlay.locator('tbody tr')).toHaveCount(rowCount);
+    await expect(overlay.locator('th', { hasText: 'Price' }).locator('.arrow')).toHaveText('▲');
+    await overlay.locator('select.sort').selectOption({ label: 'Price: high to low' });
+  });
+
   test('search and sort by name work; Escape closes', async () => {
     const overlay = await ensureOverlay();
     await overlay.locator('.seg label', { hasText: 'Match any' }).click();

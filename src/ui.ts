@@ -73,6 +73,19 @@ td.kcal { text-align: right; white-space: nowrap; color: #5a6272; }
 .tags span.maybe { background: #fff; border: 1px dashed #1b6b3a; }
 .allergens { font-size: 11px; color: #8a5a00; margin-top: 3px; }
 .empty { padding: 40px; text-align: center; color: #5a6272; }
+select.sort { padding: 5px 7px; border: 1px solid #d7dbe3; border-radius: 6px; font: inherit; background: #fff; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; padding: 14px 18px; }
+.tile { border: 1px solid #e4e6eb; border-radius: 10px; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
+.tile:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+.tile .photo { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #f0f1f4; display: block; }
+.tile .nophoto { width: 100%; aspect-ratio: 4 / 3; background: #f0f1f4; display: flex; align-items: center; justify-content: center; color: #9aa1ae; font-size: 12px; }
+.tile .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.tile .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.tile .price { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tile .price.over { color: #b3261e; }
+.tile .desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tile .vendor { margin-top: auto; padding-top: 6px; font-size: 12.5px; }
+.tile .kcal { color: #5a6272; font-size: 12px; }
 `;
 
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...children: (Node | string | null | undefined)[]): HTMLElementTagNameMap[K] {
@@ -83,6 +96,21 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, 
   }
   for (const c of children) if (c != null) el.append(typeof c === 'string' ? document.createTextNode(c) : c);
   return el;
+}
+
+function safeGet(k: string): string | null {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+function safeSet(k: string, v: string): void {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* ignore */
+  }
 }
 
 function checkbox(label: string, checked: boolean, onChange: (v: boolean) => void, cls = 'chk', title = ''): HTMLLabelElement {
@@ -133,6 +161,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     loaded: 0,
     errors: [] as string[],
     budget: null as number | null,
+    view: (safeGet('jefb-compare-view') === 'tiles' ? 'tiles' : 'table') as 'table' | 'tiles',
   };
 
   const close = () => {
@@ -156,7 +185,12 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   const meta = h('span', { class: 'meta' });
   const closeBtn = h('button', { class: 'close', type: 'button' }, 'Close ✕');
   closeBtn.addEventListener('click', close);
-  panel.append(h('header', {}, h('h1', {}, `Compare menus · ${opts.dayLabel}`), meta, h('span', { class: 'grow' }), closeBtn));
+  const viewToggle = radioGroup<'table' | 'tiles'>('view', [['table', 'Table'], ['tiles', 'Tiles']], state.view, (v) => {
+    state.view = v;
+    safeSet('jefb-compare-view', v);
+    render();
+  });
+  panel.append(h('header', {}, h('h1', {}, `Compare menus · ${opts.dayLabel}`), meta, h('span', { class: 'grow' }), viewToggle, closeBtn));
 
   // Controls
   const controls = h('div', { class: 'controls' });
@@ -205,12 +239,33 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     state.filter.maxPrice = maxPrice.value === '' ? null : Number(maxPrice.value);
     render();
   });
+  const SORTS: [string, SortState][] = [
+    ['Price: high to low', { key: 'price', dir: 'desc' }],
+    ['Price: low to high', { key: 'price', dir: 'asc' }],
+    ['Name', { key: 'name', dir: 'asc' }],
+    ['Provider', { key: 'vendorName', dir: 'asc' }],
+    ['Section', { key: 'section', dir: 'asc' }],
+    ['Kcal: high to low', { key: 'kcal', dir: 'desc' }],
+    ['Kcal: low to high', { key: 'kcal', dir: 'asc' }],
+  ];
+  const sortSelect = h('select', { class: 'sort', title: 'Sort' });
+  for (const [label] of SORTS) sortSelect.append(h('option', {}, label));
+  sortSelect.addEventListener('change', () => {
+    state.sort = { ...SORTS[sortSelect.selectedIndex][1] };
+    renderHead();
+    render();
+  });
+  const syncSortSelect = () => {
+    const i = SORTS.findIndex(([, s]) => s.key === state.sort.key && s.dir === state.sort.dir);
+    sortSelect.selectedIndex = i < 0 ? 0 : i;
+  };
   const status = h('span', { class: 'status' });
-  controls.append(h('div', { class: 'group' }, search, maxPrice, status));
+  controls.append(h('div', { class: 'group' }, search, maxPrice, sortSelect, status));
 
   // Table
   const wrap = h('div', { class: 'tablewrap' });
   panel.append(wrap);
+  const tiles = h('div', { class: 'tiles' });
   const table = h('table');
   const thead = h('thead');
   const tbody = h('tbody');
@@ -288,9 +343,55 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     return tr;
   }
 
+  function tileEl(r: Row): HTMLElement {
+    const tile = h('div', { class: 'tile' });
+    if (r.imageLarge) tile.append(h('img', { class: 'photo', src: r.imageLarge, alt: '', loading: 'lazy' }));
+    else tile.append(h('div', { class: 'nophoto' }, 'No photo'));
+    const body = h('div', { class: 'body' });
+    const over = r.budget != null && r.price > r.budget;
+    body.append(
+      h(
+        'div',
+        { class: 'top' },
+        h('span', { class: 'name' }, r.name),
+        h('span', { class: `price${over ? ' over' : ''}`, title: over ? `Over the ${formatPrice(r.budget!)} budget` : '' }, formatPrice(r.price)),
+      ),
+    );
+    const badges = h('div');
+    if (r.type === 'CustomItem') badges.append(h('span', { class: 'badge type' }, 'options'));
+    if (r.type === 'ItemBundle') badges.append(h('span', { class: 'badge type' }, 'bundle'));
+    if (r.spicy) badges.append(h('span', { class: 'badge warn' }, 'spicy'));
+    if (r.chosen) badges.append(h('span', { class: 'badge ok' }, '\u2713 chosen'));
+    const cap = capacityBadge(r.capacity);
+    if (cap) badges.append(cap);
+    if (badges.childElementCount) body.append(badges);
+    const tags = h('div', { class: 'tags' });
+    for (const k of DIET_KEYS) {
+      if (r.dietaries[k]) tags.append(h('span', { title: DIET_LABELS[k] }, DIET_SHORT[k]));
+      else if (r.possibleDietaries[k]) tags.append(h('span', { class: 'maybe', title: `${DIET_LABELS[k]} if you pick the right component` }, DIET_SHORT[k]));
+    }
+    if (r.kcal != null) tags.append(h('span', { class: 'kcal' }, `${r.kcal} kcal`));
+    if (tags.childElementCount) body.append(tags);
+    const allergenNote = r.allergens.length ? `Allergens: ${r.allergens.join(', ')}` : '';
+    if (r.description) body.append(h('div', { class: 'desc', title: allergenNote ? `${r.description}\n\n${allergenNote}` : r.description }, r.description));
+    if (allergenNote) body.append(h('div', { class: 'allergens' }, allergenNote));
+    body.append(h('div', { class: 'vendor' }, h('a', { href: `/my-meals/${r.orderId}` }, r.vendorName), h('span', { class: 'slot' }, `${r.slot} \u00b7 ${r.section}`)));
+    tile.append(body);
+    return tile;
+  }
+
   function render() {
     const visible = sortRows(applyFilter(state.rows, state.filter), state.sort);
-    tbody.replaceChildren(...visible.map(rowEl));
+    syncSortSelect();
+    if (state.view === 'tiles') {
+      tiles.replaceChildren(...visible.map(tileEl));
+      table.remove();
+      if (!tiles.isConnected) wrap.prepend(tiles);
+    } else {
+      tbody.replaceChildren(...visible.map(rowEl));
+      tiles.remove();
+      if (!table.isConnected) wrap.prepend(table);
+    }
     const loading = state.loaded < options.length;
     status.replaceChildren(
       `${visible.length} of ${state.rows.length} items` + (loading ? ` · loading ${state.loaded}/${options.length} providers…` : ''),

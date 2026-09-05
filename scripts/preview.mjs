@@ -14,6 +14,10 @@ await page.screenshot({ path: 'auth/preview-buttons.png' });
 await page.locator('li[test-id="days"]').first().locator('[data-jefb-compare-button]').first().click();
 await page.waitForFunction(() => !document.querySelector('#jefb-compare-host')?.shadowRoot?.querySelector('.status')?.textContent?.includes('loading'));
 await page.screenshot({ path: 'auth/preview.png' });
+await page.locator('#jefb-compare-host .seg label', { hasText: 'Tiles' }).click();
+await page.waitForTimeout(1500);
+await page.screenshot({ path: 'auth/preview-tiles.png' });
+await page.locator('#jefb-compare-host .seg label', { hasText: 'Table' }).click();
 console.log('saved auth/preview-buttons.png and auth/preview.png');
 if (process.argv.includes('--keep')) { await new Promise(() => {}); }
 await ctx.close();
