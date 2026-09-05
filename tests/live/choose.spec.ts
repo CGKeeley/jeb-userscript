@@ -1,0 +1,86 @@
+// Choose flow on a Tuesday order: overlay -> provider page -> item quantity 1 -> back to 0.
+// A route handler aborts every non-GET request to the app, so an order can never be placed by this test.
+import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const PROFILE = path.resolve('auth/profile');
+const SCRIPT = path.resolve('dist/bookmarklet.js');
+const BASE = 'https://app.business.just-eat.co.uk';
+
+test.describe('Choose an item from the comparison (Tuesday)', () => {
+  test.skip(!fs.existsSync(PROFILE), 'run `npm run login` first');
+  test.skip(!fs.existsSync(SCRIPT), 'run `npm run build` first');
+
+  let ctx: BrowserContext;
+  let page: Page;
+  const blockedWrites: string[] = [];
+  const code = fs.existsSync(SCRIPT) ? fs.readFileSync(SCRIPT, 'utf8') : '';
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    ctx = await chromium.launchPersistentContext(PROFILE, { headless: false, viewport: { width: 1400, height: 1000 } });
+    await ctx.route(`${BASE}/**`, (route) => {
+      const r = route.request();
+      if (r.method() !== 'GET' && !r.url().includes('/cdn-cgi/')) {
+        blockedWrites.push(`${r.method()} ${r.url()}`);
+        return route.abort('failed');
+      }
+      return route.continue();
+    });
+    page = ctx.pages()[0] ?? (await ctx.newPage());
+    await page.goto(`${BASE}/my-meals`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('li[test-id="days"]').first()).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(2500); // the app re-navigates once shortly after load
+  });
+
+  test.afterAll(async () => {
+    await ctx?.close();
+  });
+
+  test('Choose opens the provider in-app, adds the item, and never writes to the server', async () => {
+    await page.evaluate(code);
+    const tuesday = page.locator('li[test-id="days"]', { has: page.locator('[test-id="deliveryDayOfWeek"]', { hasText: 'Tuesday' }) }).first();
+    await expect(tuesday).toBeVisible();
+    await tuesday.locator('[data-jefb-compare-button]').first().click();
+
+    const overlay = page.locator('#jefb-compare-host');
+    await expect(overlay.locator('.status')).not.toContainText('loading', { timeout: 30_000 });
+
+    // Pick a plain item from a provider that is open for choice (has an Add/Choose button on the list).
+    const choose = overlay.locator('button.choose[data-type="SingleItem"]:not([disabled])').first();
+    const itemId = (await choose.getAttribute('data-item-id'))!;
+    const orderId = (await choose.getAttribute('data-order-id'))!;
+    const row = overlay.locator(`tbody tr[data-item-id="${itemId}"]`).first();
+    const itemName = (await row.locator('.name').evaluate((e) => e.firstChild?.textContent ?? ''))!.trim();
+    const vendor = (await row.locator('td.vendor a').textContent())!.trim();
+    console.log(`[choose] ${itemName} from ${vendor} (order ${orderId})`);
+    await choose.click();
+
+    await expect(overlay).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`/my-meals/${orderId}$`), { timeout: 20_000 });
+    const itemEl = page.locator(`[data-item-id="${itemId}"]`);
+    await expect(itemEl).toBeVisible({ timeout: 20_000 });
+    await expect(itemEl.locator('input[test-id="quantityInput"]')).toHaveValue('1', { timeout: 10_000 });
+    await expect(page.locator('#jefb-compare-toast')).toBeAttached();
+    await expect(page.locator('#jefb-compare-toast .t')).toContainText('Confirm Choice');
+
+    // The site's own basket panel shows the item, and the confirm button exists but we never press it.
+    await expect(page.locator('button[test-id="submitButton"]')).toBeVisible();
+    expect(blockedWrites, 'no write request should have been attempted').toEqual([]);
+
+    // Undo: press - so the basket is empty again.
+    await itemEl.locator('button[test-id="decrement"]').click();
+    await expect(itemEl.locator('input[test-id="quantityInput"]')).toHaveValue('0');
+
+    const cart = await page.evaluate(async (id) => (await fetch(`/api/eaters/me/orders/${id}/cart`)).json(), orderId);
+    expect(cart.item.cartItems).toEqual([]);
+  });
+
+  test('going back to the list re-adds the Compare buttons without re-running the bookmarklet', async () => {
+    await page.goBack();
+    await expect(page).toHaveURL(/\/my-meals$/);
+    await expect(page.locator('[data-jefb-compare-button]').first()).toBeVisible({ timeout: 10_000 });
+    expect(blockedWrites).toEqual([]);
+  });
+});

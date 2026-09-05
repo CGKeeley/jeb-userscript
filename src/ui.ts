@@ -13,6 +13,7 @@ import {
   type SortKey,
   type SortState,
 } from './core';
+import { chooseItem } from './choose';
 import type { Cart, EaterOption, Row } from './types';
 
 export interface OverlayOptions {
@@ -73,6 +74,11 @@ td.kcal { text-align: right; white-space: nowrap; color: #5a6272; }
 .tags span.maybe { background: #fff; border: 1px dashed #1b6b3a; }
 .allergens { font-size: 11px; color: #8a5a00; margin-top: 3px; }
 .empty { padding: 40px; text-align: center; color: #5a6272; }
+button.choose { border: 0; background: #ff8000; color: #fff; border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+button.choose:hover { background: #e67300; }
+button.choose:disabled { background: #d7dbe3; cursor: default; }
+td.act { text-align: right; }
+.tile .act { display: flex; justify-content: flex-end; }
 select.sort { padding: 5px 7px; border: 1px solid #d7dbe3; border-radius: 6px; font: inherit; background: #fff; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; padding: 14px 18px; }
 .tile { border: 1px solid #e4e6eb; border-radius: 10px; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
@@ -280,6 +286,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     ['price', 'Price', 'price'],
     ['kcal', 'Kcal', 'kcal'],
     [null, 'Diet', 'tags'],
+    [null, '', 'act'],
   ];
 
   function renderHead() {
@@ -307,8 +314,20 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     return null;
   }
 
+  function chooseButton(r: Row): HTMLButtonElement {
+    const b = h('button', { class: 'choose', type: 'button', 'data-item-id': r.itemId, 'data-order-id': r.orderId, 'data-type': r.type }, r.type === 'SingleItem' ? 'Choose' : 'Choose…');
+    if (r.capacity === 'SOLD_OUT') b.disabled = true;
+    b.title = r.type === 'SingleItem' ? 'Open this provider and add the item to your basket. You then confirm on their page.' : 'Open this provider at this item so you can pick its options.';
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      close();
+      void chooseItem(r);
+    });
+    return b;
+  }
+
   function rowEl(r: Row): HTMLTableRowElement {
-    const tr = h('tr');
+    const tr = h('tr', { 'data-item-id': r.itemId, 'data-type': r.type });
     const itemCell = h('td', { class: 'item' });
     if (r.image) itemCell.append(h('img', { class: 'thumb', src: r.image, alt: '', loading: 'lazy' }));
     const nameLine = h('div', { class: 'name' }, r.name);
@@ -340,11 +359,12 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
       else if (r.possibleDietaries[k]) tags.append(h('span', { class: 'maybe', title: `${DIET_LABELS[k]} if you pick the right component` }, DIET_SHORT[k]));
     }
     tr.append(tags);
+    tr.append(h('td', { class: 'act' }, chooseButton(r)));
     return tr;
   }
 
   function tileEl(r: Row): HTMLElement {
-    const tile = h('div', { class: 'tile' });
+    const tile = h('div', { class: 'tile', 'data-item-id': r.itemId, 'data-type': r.type });
     if (r.imageLarge) tile.append(h('img', { class: 'photo', src: r.imageLarge, alt: '', loading: 'lazy' }));
     else tile.append(h('div', { class: 'nophoto' }, 'No photo'));
     const body = h('div', { class: 'body' });
@@ -376,6 +396,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     if (r.description) body.append(h('div', { class: 'desc', title: allergenNote ? `${r.description}\n\n${allergenNote}` : r.description }, r.description));
     if (allergenNote) body.append(h('div', { class: 'allergens' }, allergenNote));
     body.append(h('div', { class: 'vendor' }, h('a', { href: `/my-meals/${r.orderId}` }, r.vendorName), h('span', { class: 'slot' }, `${r.slot} \u00b7 ${r.section}`)));
+    body.append(h('div', { class: 'act' }, chooseButton(r)));
     tile.append(body);
     return tile;
   }

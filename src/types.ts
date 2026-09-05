@@ -104,6 +104,7 @@ export interface CartsResponse {
 /** One flattened, comparable row in the comparison table. */
 export interface Row {
   key: string;
+  itemId: string;
   name: string;
   description: string;
   price: number;

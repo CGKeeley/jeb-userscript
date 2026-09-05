@@ -119,6 +119,7 @@ export function flattenSummary(summary: Summary, option: EaterOption, slot: stri
       if (!isAvailableAtLocation(item, locId)) continue;
       rows.push({
         key: `${option.orderId}:${item.id}`,
+        itemId: item.id,
         name: item.name,
         description: item.description ?? '',
         price: item.price,

@@ -2,6 +2,7 @@
 import { fetchCarts } from './api';
 import { cartsByDay } from './core';
 import type { Cart, CartsResponse } from './types';
+import { resumePendingChoose } from './choose';
 import { openOverlay } from './ui';
 
 const HOST = 'app.business.just-eat.co.uk';
@@ -23,6 +24,7 @@ function main(): void {
     location.href = `https://${HOST}/my-meals`;
     return;
   }
+  void resumePendingChoose();
   if (window.__jefbCompare) {
     // Already installed: refresh the carts and re-inject buttons.
     window.__jefbCompare.carts = fetchCarts();

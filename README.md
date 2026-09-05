@@ -28,6 +28,9 @@ buttons. The site reloads itself once shortly after first load, so if the button
   Bundles that can satisfy a diet with the right component choice count as matching and show dashed tags.
 - Slot filter (12:00 - 12:30 vs 12:30 - 13:00), free-text search over name, description, provider, section and
   ingredients, and a max price box.
+- **Choose** on a row or tile opens that provider inside the app, scrolls to the item and presses + for you.
+  You then click the site's own **Confirm Choice**. For items with options or bundles it only scrolls to the
+  item so you can pick. Nothing is ordered until you confirm.
 - Prices above the day's budget are red. Items you have already chosen are marked. Sold-out providers are listed
   in the header but not fetched, because the API answers 409 for them.
 
@@ -44,6 +47,20 @@ The page's own JSON API is called with the session cookies:
 Item types: `SingleItem`, `CustomItem` (option sections) and `ItemBundle` (choice groups). For bundles the best
 case is computed as the intersection across groups of the union within each group. The API's `possibleDietaries`
 field on custom items is the worst case (flags that survive every option) and is ignored.
+
+### Basket semantics (found by recording the site, see `scripts/explore-cart*.mjs`)
+
+The + / - buttons on a provider page change nothing on the server and write nothing to storage: the basket is
+in-memory Angular state. **Confirm Choice** is the order. It sends one request:
+
+```
+PUT /api/eaters/me/orders/<eaterOption.orderId>/cart
+{"cartItems":[{"item":"<itemId>","quantity":1,"type":"CartSingleItem"}],
+ "departmentReference":"","deskNumber":null,"hasEaterConfirmedAge":false,"recommendedItemId":null}
+```
+
+`GET` on the same URL returns the confirmed cart (`item.cartItems`). The bookmarklet never calls the PUT; it
+drives the site's own UI up to the confirm button so the user stays in control.
 
 ## Development
 

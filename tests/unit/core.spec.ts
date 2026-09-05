@@ -104,6 +104,7 @@ test.describe('possibleDietaries', () => {
 function row(over: Partial<Row> & { name: string; price: number }): Row {
   return {
     key: over.name,
+    itemId: over.name,
     description: '',
     kcal: null,
     type: 'SingleItem',
