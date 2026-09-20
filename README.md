@@ -42,11 +42,10 @@ buttons. The site reloads itself once shortly after first load, so if the button
   item so you can pick. Nothing is ordered until you confirm. The comparison is only hidden, not closed: a
   **Back to comparison** pill at the bottom right restores it with your filters, view and sort intact.
   Escape, clicking outside, or **Minimise** also hide it; **Close** discards it.
-- Future days are shown for browsing, but the site itself locks Add/Choose until each order's own choice
-  window opens (shown on the list as "Order is not open"). Choose respects that lock: it is greyed out with a
-  **not open yet** badge and a tooltip giving the open time, and refuses even if triggered another way. It
-  never falls back to a raw page navigation to get around a button the list doesn't offer, since that would
-  bypass the same restriction the site's UI is enforcing.
+- The **Compare menus** button itself is disabled (with a tooltip giving the open time) for a day the site
+  hasn't opened for choosing yet — shown on the list as "Order is not open". The lock is per day, not per item:
+  everything in an unopened day is locked together, so one disabled button covers it. Once a day is open,
+  everything inside it behaves normally.
 - The header shows the day's subsidised budget, what you have already spent (both slots share one budget) and
   what remains; prices above the remaining amount are red with the top-up in the tooltip. The subsidy is one
   budget for the whole day, shared across both slots and every vendor, used up in the order you confirm.
@@ -64,9 +63,9 @@ The page's own JSON API is called with the session cookies:
   `eaterOptions` (vendors) for each. Days in the DOM are matched to carts via the `Order <humanId>` labels.
 - `GET /api/individual-choice/<eaterOption.orderId>/summary` returns a vendor's full menu, including
   `dietaries`, `possibleDietaries` (custom items), `allergens`, `kcal`, section `hidden` flags and per-location
-  `availability`. It answers even before the choice window opens (`Cart.choiceOpenTime`), which is what lets
-  Compare show future days at all — but Choose deliberately does not use that early access to add items,
-  since the site's own UI locks that until the window opens.
+  `availability`. It answers even before the choice window opens (`Cart.choiceOpenTime`), but the bookmarklet
+  doesn't use that early access: the **Compare menus** button for that day is disabled instead of relying on
+  the summary page to be locked.
 
 Item types: `SingleItem`, `CustomItem` (option sections) and `ItemBundle` (choice groups). For bundles the best
 case is computed as the intersection across groups of the union within each group. The API's `possibleDietaries`

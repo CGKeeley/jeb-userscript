@@ -7,7 +7,6 @@ import {
   DIET_LABELS,
   DIET_SHORT,
   flattenSummary,
-  formatOpensAt,
   formatPrice,
   remainingBudget,
   sortRows,
@@ -479,11 +478,6 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     return null;
   }
 
-  function openBadge(r: Row): HTMLElement | null {
-    if (r.choiceOpen) return null;
-    return h('span', { class: 'badge warn', title: `Opens ${formatOpensAt(r.choiceOpensAt)} for choosing` }, 'not open yet');
-  }
-
   const limit = () => state.remaining ?? state.budget;
   const isOver = (price: number) => {
     const lim = limit();
@@ -581,15 +575,11 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   function chooseButton(r: Row): HTMLButtonElement {
     const b = h(
       'button',
-      { class: 'choose', type: 'button', 'data-item-id': r.itemId, 'data-order-id': r.orderId, 'data-type': r.type, 'data-vendor-chosen': r.vendorChosen ? '1' : '0', 'data-choice-open': r.choiceOpen ? '1' : '0' },
+      { class: 'choose', type: 'button', 'data-item-id': r.itemId, 'data-order-id': r.orderId, 'data-type': r.type, 'data-vendor-chosen': r.vendorChosen ? '1' : '0' },
       r.type === 'SingleItem' ? 'Choose' : 'Choose…',
     );
-    if (r.capacity === 'SOLD_OUT' || !r.choiceOpen) b.disabled = true;
-    b.title = !r.choiceOpen
-      ? `Choosing opens ${formatOpensAt(r.choiceOpensAt)}. The site disables this until then, so this tool does too.`
-      : r.type === 'SingleItem'
-        ? 'Open this provider and add the item to your basket. You then confirm on their page.'
-        : 'Open this provider at this item so you can pick its options.';
+    if (r.capacity === 'SOLD_OUT') b.disabled = true;
+    b.title = r.type === 'SingleItem' ? 'Open this provider and add the item to your basket. You then confirm on their page.' : 'Open this provider at this item so you can pick its options.';
     b.addEventListener('click', (e) => {
       e.stopPropagation();
       hide();
@@ -622,8 +612,6 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     vendorCell.append(a);
     const badge = capacityBadge(r.capacity);
     if (badge) vendorCell.append(badge);
-    const openB = openBadge(r);
-    if (openB) vendorCell.append(openB);
     vendorCell.append(h('span', { class: 'slot' }, `${r.slot}${r.vendorLocationName ? ` · ${r.vendorLocationName}` : ''}`));
     tr.append(vendorCell);
 
@@ -667,8 +655,6 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     if (r.chosen) badges.append(h('span', { class: 'badge ok' }, '\u2713 chosen'));
     const cap = capacityBadge(r.capacity);
     if (cap) badges.append(cap);
-    const openB = openBadge(r);
-    if (openB) badges.append(openB);
     if (badges.childElementCount) body.append(badges);
     const tags = h('div', { class: 'tags' });
     for (const k of DIET_KEYS) {

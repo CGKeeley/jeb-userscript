@@ -2,10 +2,8 @@
 // Nothing is sent to the server until the user clicks the site's own Confirm Choice button, which is the
 // actual order (it PUTs /api/eaters/me/orders/<orderId>/cart). We deliberately never call that ourselves.
 //
-// The site also locks Add/Choose in its own UI until an order's choice window opens (Row.choiceOpen), even
-// though the underlying pages still respond before then. We keep to that lock rather than using our direct
-// page access to get around it: chooseItem() refuses up front, and never falls back to a raw navigation.
-import { formatOpensAt } from './core';
+// The comparison only ever offers Choose for a day whose choice window is already open (the "Compare menus"
+// button itself is disabled otherwise — see bookmarklet.ts), so we don't repeat that check per item here.
 import type { Row } from './types';
 
 const HIGHLIGHT_CSS = 'outline: 3px solid #ff8000; outline-offset: 4px; border-radius: 8px; transition: outline-color 1s;';
@@ -65,11 +63,6 @@ function currentQuantity(itemEl: Element): number {
 }
 
 export async function chooseItem(row: Row): Promise<void> {
-  if (!row.choiceOpen) {
-    // The Choose button is already disabled in this case; this guard covers any other path that calls in here.
-    toast(`Choosing for ${row.vendorName} opens ${formatOpensAt(row.choiceOpensAt)}. It isn't open yet, so Choose won't try to add it early.`, 10000);
-    return;
-  }
   const targetPath = `/my-meals/${row.orderId}`;
   if (!location.pathname.endsWith(targetPath)) {
     let btn = findVendorButton(row.orderHumanId);

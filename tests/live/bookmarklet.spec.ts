@@ -208,32 +208,37 @@ test.describe('bookmarklet on /my-meals', () => {
     await expect(page.locator('#jefb-compare-toast .t')).toContainText('Copied');
   });
 
-  test('a day the site itself has not opened for choosing shows disabled Choose buttons and a badge', async () => {
+  test('a day the site has not opened for choosing has a disabled Compare menus button', async () => {
     // The previous test leaves its overlay open, covering the page; close it via its own button (proper
     // teardown) before interacting with the underlying day list.
     const stale = page.locator('#jefb-compare-host');
     if ((await stale.count()) > 0) await stale.locator('button.close').click();
-
-    // Find this from the real page state (the site's own "Order is not open" text), not a guess at which
-    // day that will be, so the test stays valid as the account's rolling choice windows move on.
     await ensureInjected();
-    const notOpenDay = page.locator('li[test-id="days"]', { has: page.locator('text=/Order is not open/i') }).first();
-    test.skip((await notOpenDay.count()) === 0, 'no not-open-yet day currently visible on this account');
 
-    await notOpenDay.locator('[data-jefb-compare-button]').first().click();
-    const overlay = page.locator('#jefb-compare-host');
-    await expect(overlay.locator('.status')).not.toContainText('loading', { timeout: 30_000 });
-    if ((await overlay.locator('table').count()) === 0) await overlay.locator('.seg label', { hasText: 'Table' }).click();
+    // Find this from real page state (the site's own "Order is not open" text on every vendor row for the
+    // day), not a guess at which day that will be, so the test stays valid as the account's rolling choice
+    // windows move on. Inspecting the real DOM confirmed the lock is atomic per day: either every vendor row
+    // shows it or none do, so requiring all of them keeps this to genuinely fully-locked days.
+    const days = page.locator('li[test-id="days"]');
+    const n = await days.count();
+    let lockedDay = null;
+    for (let i = 0; i < n; i++) {
+      const day = days.nth(i);
+      const vendors = await day.locator('[test-id="eaterOption"]').count();
+      const locked = await day.locator('[test-id="eaterOption"]', { hasText: /Order is not open/i }).count();
+      if (vendors > 0 && vendors === locked) {
+        lockedDay = day;
+        break;
+      }
+    }
+    test.skip(!lockedDay, 'no fully locked day currently visible on this account');
 
-    const notOpenButtons = overlay.locator('button.choose[data-choice-open="0"]');
-    expect(await notOpenButtons.count()).toBeGreaterThan(0);
-    await expect(notOpenButtons.first()).toBeDisabled();
-    await expect(overlay.locator('.badge.warn', { hasText: 'not open yet' }).first()).toBeVisible();
+    const lockedBtn = lockedDay!.locator('[data-jefb-compare-button]').first();
+    await expect(lockedBtn).toBeDisabled();
+    await expect(lockedBtn).toHaveAttribute('title', /./); // explains why (an open time, or a fallback message)
 
-    await overlay.locator('button.copy').click();
-    const md = await page.evaluate(() => navigator.clipboard.readText());
-    expect(md).toMatch(/not open for choosing until/);
-    await overlay.locator('button.close').click();
+    // A day known to be open — the first day, which earlier tests already opened successfully — stays enabled.
+    await expect(days.first().locator('[data-jefb-compare-button]').first()).toBeEnabled();
   });
 
   test('type chips, within-budget toggle, favourites and lightbox', async () => {

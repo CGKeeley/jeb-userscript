@@ -1,6 +1,6 @@
 // Entry point. Adds a "Compare menus" button to each day on /my-meals and opens the comparison overlay.
 import { fetchCarts } from './api';
-import { cartsByDay } from './core';
+import { cartsByDay, formatOpensAt, isChoiceOpen } from './core';
 import type { Cart, CartsResponse } from './types';
 import { openOverlay } from './ui';
 
@@ -118,12 +118,21 @@ async function injectOnce(state: State): Promise<void> {
     const label = [dowText, dateText].filter(Boolean).join(' ');
     const slotLabels = slotLabelsIn(day);
 
+    // The site locks every slot on a day together (confirmed by inspecting real "not open yet" days: either
+    // all vendors in the day show it, or none do), so one open cart is enough to say the day is open.
+    const opensAt = [...dayCarts].map((c) => c.choiceOpenTime).sort()[0];
+    const dayOpen = [...dayCarts].some((c) => isChoiceOpen(c.choiceOpenTime));
+
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = 'Compare menus';
     btn.className = 'button button--secondary';
     btn.setAttribute('data-jefb-compare-button', '1');
     btn.style.cssText = 'margin-top:8px;padding:6px 10px;font-size:12px;white-space:nowrap;cursor:pointer;';
+    if (!dayOpen) {
+      btn.disabled = true;
+      btn.title = opensAt ? `Opens ${formatOpensAt(opensAt)}` : 'Not open yet';
+    }
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
