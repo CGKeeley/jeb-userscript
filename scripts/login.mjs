@@ -35,15 +35,24 @@ console.log('Please log in in the browser window. Waiting for /my-meals to load 
 
 // Wait until we are on /my-meals and it looks logged in (no login form, cookies present).
 const deadline = Date.now() + 15 * 60 * 1000;
+let loggedIn = false;
 while (Date.now() < deadline) {
   await page.waitForTimeout(2000);
   const url = page.url();
   if (url.startsWith(`${BASE}/my-meals`)) {
     const hasLogin = await page.locator('input[type="password"]').count();
-    if (!hasLogin) break;
+    if (!hasLogin && (await page.locator('li[test-id="days"]').count()) > 0) {
+      loggedIn = true;
+      break;
+    }
   }
+}
+if (!loggedIn) {
+  console.error(`Timed out after 15 minutes without detecting a login (still on ${page.url()}). Nothing was saved; run this again and log in within the window.`);
+  await ctx.close();
+  process.exit(1);
 }
 await page.waitForTimeout(5000); // let the page settle & capture API calls
 await ctx.storageState({ path: 'auth/state.json' });
-console.log('Saved auth/state.json. You can close the browser.');
+console.log('Logged in. Saved auth/state.json. You can close the browser.');
 await ctx.close();

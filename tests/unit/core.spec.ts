@@ -11,7 +11,9 @@ import {
   contrastWithWhite,
   favKey,
   foodKind,
+  formatOpensAt,
   formatPrice,
+  isChoiceOpen,
   remainingBudget,
   toMarkdown,
   VENDOR_COLORS,
@@ -61,6 +63,31 @@ test.describe('flattenSummary', () => {
     );
     expect(rows.map((r) => r.name)).toEqual(['Burrito', 'Here too']);
     expect(rows[0]).toMatchObject({ vendorName: 'Yolk - Soho', slot: '12:00 - 12:30', section: 'Mains', budget: 20, orderId: 'ord1' });
+  });
+
+  test('marks rows as not open when the choice window is in the future, using the given time', () => {
+    const rows = flattenSummary(
+      summary([{ title: 'Mains', hidden: false, items: [item({ name: 'Burrito', price: 9 })] }]),
+      option,
+      'slot',
+      undefined,
+      '2999-01-01T00:00:00Z',
+    );
+    expect(rows[0].choiceOpen).toBe(false);
+    expect(rows[0].choiceOpensAt).toBe('2999-01-01T00:00:00Z');
+  });
+
+  test('marks rows as open once the choice window has passed, and by default (no choiceOpenTime given)', () => {
+    const past = flattenSummary(
+      summary([{ title: 'Mains', hidden: false, items: [item({ name: 'Burrito', price: 9 })] }]),
+      option,
+      'slot',
+      undefined,
+      '2000-01-01T00:00:00Z',
+    );
+    expect(past[0].choiceOpen).toBe(true);
+    const defaulted = flattenSummary(summary([{ title: 'Mains', hidden: false, items: [item({ name: 'Burrito', price: 9 })] }]), option, 'slot');
+    expect(defaulted[0].choiceOpen).toBe(true);
   });
 
   test('marks chosen items and lists allergens', () => {
@@ -127,6 +154,8 @@ function row(over: Partial<Row> & { name: string; price: number }): Row {
     vendorLogo: null,
     vendorColor: '#000',
     vendorChosen: false,
+    choiceOpen: true,
+    choiceOpensAt: '',
     orderId: 'o',
     orderHumanId: 1,
     slot: '12:00 - 12:30',
@@ -241,6 +270,17 @@ test('kind, within-budget and favourites filters', () => {
   expect(applyFilter(rows, { ...defaultFilter(), favouritesOnly: true, favourites: favs }).map((r) => r.name)).toEqual(['Fries']);
 });
 
+test('isChoiceOpen compares against the given time, open at exactly the open moment', () => {
+  const now = new Date('2026-09-10T09:00:00Z');
+  expect(isChoiceOpen('2026-09-10T08:00:00Z', now)).toBe(true);
+  expect(isChoiceOpen('2026-09-10T09:00:00Z', now)).toBe(true);
+  expect(isChoiceOpen('2026-09-10T09:00:01Z', now)).toBe(false);
+});
+
+test('formatOpensAt renders a weekday and time', () => {
+  expect(formatOpensAt('2026-09-10T08:00:00Z')).toMatch(/\d{2}:\d{2}/);
+});
+
 test('formatPrice handles negatives', () => {
   expect(formatPrice(-1)).toBe('-£1.00');
   expect(formatPrice(7.5)).toBe('£7.50');
@@ -272,6 +312,12 @@ test('toMarkdown groups by slot then provider and includes all details', () => {
   expect(md).toContain('  Ingredients: beef, bun');
   expect(md).toContain('- **Veg** — £8.00 (top-up £0.50) · Vegetarian · has options to choose');
   expect(md).toContain('Pescatarian · ALREADY CHOSEN');
+});
+
+test('toMarkdown notes a provider whose choice window has not opened yet', () => {
+  const rows = [row({ name: 'Soup', price: 5, vendorName: 'Bagel Factory', orderId: 'o3', choiceOpen: false, choiceOpensAt: '2026-09-10T08:00:00Z' })];
+  const md = toMarkdown(rows, { dayLabel: 'Wed 10th Sep', budget: null, spent: [], remaining: null, filterSummary: '', totalRows: 1 });
+  expect(md).toMatch(/### Bagel Factory \(1 items, not open for choosing until/);
 });
 
 test('cartsByDay groups slots on the same day and drops cancelled carts', () => {

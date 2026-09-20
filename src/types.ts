@@ -135,6 +135,8 @@ export interface Row {
   vendorLogo: string | null;
   vendorColor: string;
   vendorChosen: boolean; // eater already has a confirmed order with this vendor
+  choiceOpen: boolean; // false if the site's own choice window for this order hasn't opened yet
+  choiceOpensAt: string; // ISO; meaningful only when choiceOpen is false
   orderId: string;
   orderHumanId: number;
   slot: string;

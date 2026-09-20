@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "login": "node scripts/login.mjs",
+    "check-session": "node scripts/check-session.mjs",
     "build": "node scripts/build.mjs",
     "test": "playwright test",
     "typecheck": "tsc -p .",

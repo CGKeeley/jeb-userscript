@@ -1,6 +1,11 @@
 // "Choose" flow: navigate inside the Angular app to the provider's page and press + on the chosen item.
 // Nothing is sent to the server until the user clicks the site's own Confirm Choice button, which is the
 // actual order (it PUTs /api/eaters/me/orders/<orderId>/cart). We deliberately never call that ourselves.
+//
+// The site also locks Add/Choose in its own UI until an order's choice window opens (Row.choiceOpen), even
+// though the underlying pages still respond before then. We keep to that lock rather than using our direct
+// page access to get around it: chooseItem() refuses up front, and never falls back to a raw navigation.
+import { formatOpensAt } from './core';
 import type { Row } from './types';
 
 const HIGHLIGHT_CSS = 'outline: 3px solid #ff8000; outline-offset: 4px; border-radius: 8px; transition: outline-color 1s;';
@@ -60,6 +65,11 @@ function currentQuantity(itemEl: Element): number {
 }
 
 export async function chooseItem(row: Row): Promise<void> {
+  if (!row.choiceOpen) {
+    // The Choose button is already disabled in this case; this guard covers any other path that calls in here.
+    toast(`Choosing for ${row.vendorName} opens ${formatOpensAt(row.choiceOpensAt)}. It isn't open yet, so Choose won't try to add it early.`, 10000);
+    return;
+  }
   const targetPath = `/my-meals/${row.orderId}`;
   if (!location.pathname.endsWith(targetPath)) {
     let btn = findVendorButton(row.orderHumanId);
@@ -72,9 +82,9 @@ export async function chooseItem(row: Row): Promise<void> {
     if (btn && !(btn as HTMLButtonElement).disabled) {
       btn.click(); // in-app navigation, our script keeps running
     } else {
-      // Not choosable from the list (choice not open yet, or already chosen elsewhere): plain navigation.
-      sessionStorage.setItem('jefb-compare-pending', JSON.stringify({ orderId: row.orderId, itemId: row.itemId, name: row.name }));
-      location.href = targetPath;
+      // The list offers no way to choose this right now. We don't fall back to a raw navigation to the
+      // provider page, since that would bypass whatever the site's own list is enforcing.
+      toast(`Could not find an Add/Choose button for ${row.vendorName} on the meals list. Open it there directly.`, 10000);
       return;
     }
   }
@@ -88,7 +98,7 @@ export async function chooseItem(row: Row): Promise<void> {
 }
 
 /** Scroll to the item, press + once if it is a simple item, and tell the user what to do next. */
-export async function finishChoose(itemEl: HTMLElement, name: string, type: Row['type']): Promise<void> {
+async function finishChoose(itemEl: HTMLElement, name: string, type: Row['type']): Promise<void> {
   itemEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const prev = itemEl.getAttribute('style') ?? '';
   itemEl.setAttribute('style', `${prev};${HIGHLIGHT_CSS}`);
@@ -107,21 +117,5 @@ export async function finishChoose(itemEl: HTMLElement, name: string, type: Row[
     }
   } else {
     toast(`Pick the options for "${name}", add it, then click Confirm Choice to order.`, 12000);
-  }
-}
-
-/** After a full-page navigation fallback, resume the choose flow if the bookmarklet is run again. */
-export async function resumePendingChoose(): Promise<boolean> {
-  const raw = sessionStorage.getItem('jefb-compare-pending');
-  if (!raw) return false;
-  sessionStorage.removeItem('jefb-compare-pending');
-  try {
-    const p = JSON.parse(raw) as { orderId: string; itemId: string; name: string };
-    if (!location.pathname.endsWith(`/my-meals/${p.orderId}`)) return false;
-    const el = await waitFor(() => document.querySelector<HTMLElement>(`[data-item-id="${p.itemId}"]`), 15000);
-    if (el) await finishChoose(el, p.name, 'SingleItem');
-    return true;
-  } catch {
-    return false;
   }
 }

@@ -7,6 +7,7 @@ import {
   DIET_LABELS,
   DIET_SHORT,
   flattenSummary,
+  formatOpensAt,
   formatPrice,
   remainingBudget,
   sortRows,
@@ -216,7 +217,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   style.textContent = CSS;
   shadow.append(style);
 
-  const options: { option: EaterOption; slot: string; color: string }[] = [];
+  const options: { option: EaterOption; slot: string; color: string; choiceOpenTime: string }[] = [];
   const soldOutVendors: string[] = [];
   for (const cart of opts.carts) {
     for (const o of cart.eaterOptions) {
@@ -226,7 +227,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
         continue;
       }
       const slot = opts.slotLabels.get(o.orderHumanId) ?? new Date(cart.requestedDeliveryDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      options.push({ option: o, slot, color: vendorColor(options.length) });
+      options.push({ option: o, slot, color: vendorColor(options.length), choiceOpenTime: cart.choiceOpenTime });
     }
   }
   const slotNames = [...new Set(options.map((o) => o.slot))];
@@ -478,6 +479,11 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     return null;
   }
 
+  function openBadge(r: Row): HTMLElement | null {
+    if (r.choiceOpen) return null;
+    return h('span', { class: 'badge warn', title: `Opens ${formatOpensAt(r.choiceOpensAt)} for choosing` }, 'not open yet');
+  }
+
   const limit = () => state.remaining ?? state.budget;
   const isOver = (price: number) => {
     const lim = limit();
@@ -573,9 +579,17 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
 
   function chooseButton(r: Row): HTMLButtonElement {
-    const b = h('button', { class: 'choose', type: 'button', 'data-item-id': r.itemId, 'data-order-id': r.orderId, 'data-type': r.type, 'data-vendor-chosen': r.vendorChosen ? '1' : '0' }, r.type === 'SingleItem' ? 'Choose' : 'Choose…');
-    if (r.capacity === 'SOLD_OUT') b.disabled = true;
-    b.title = r.type === 'SingleItem' ? 'Open this provider and add the item to your basket. You then confirm on their page.' : 'Open this provider at this item so you can pick its options.';
+    const b = h(
+      'button',
+      { class: 'choose', type: 'button', 'data-item-id': r.itemId, 'data-order-id': r.orderId, 'data-type': r.type, 'data-vendor-chosen': r.vendorChosen ? '1' : '0', 'data-choice-open': r.choiceOpen ? '1' : '0' },
+      r.type === 'SingleItem' ? 'Choose' : 'Choose…',
+    );
+    if (r.capacity === 'SOLD_OUT' || !r.choiceOpen) b.disabled = true;
+    b.title = !r.choiceOpen
+      ? `Choosing opens ${formatOpensAt(r.choiceOpensAt)}. The site disables this until then, so this tool does too.`
+      : r.type === 'SingleItem'
+        ? 'Open this provider and add the item to your basket. You then confirm on their page.'
+        : 'Open this provider at this item so you can pick its options.';
     b.addEventListener('click', (e) => {
       e.stopPropagation();
       hide();
@@ -608,6 +622,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     vendorCell.append(a);
     const badge = capacityBadge(r.capacity);
     if (badge) vendorCell.append(badge);
+    const openB = openBadge(r);
+    if (openB) vendorCell.append(openB);
     vendorCell.append(h('span', { class: 'slot' }, `${r.slot}${r.vendorLocationName ? ` · ${r.vendorLocationName}` : ''}`));
     tr.append(vendorCell);
 
@@ -651,6 +667,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     if (r.chosen) badges.append(h('span', { class: 'badge ok' }, '\u2713 chosen'));
     const cap = capacityBadge(r.capacity);
     if (cap) badges.append(cap);
+    const openB = openBadge(r);
+    if (openB) badges.append(openB);
     if (badges.childElementCount) body.append(badges);
     const tags = h('div', { class: 'tags' });
     for (const k of DIET_KEYS) {
@@ -726,10 +744,10 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
 
   // Load all menus concurrently, rendering as each arrives.
-  for (const { option, slot, color } of options) {
+  for (const { option, slot, color, choiceOpenTime } of options) {
     fetchSummary(option.orderId)
       .then((summary) => {
-        state.rows.push(...flattenSummary(summary, option, slot, color));
+        state.rows.push(...flattenSummary(summary, option, slot, color, choiceOpenTime));
         if (state.budget == null && summary.item.individualChoice.budget != null) state.budget = summary.item.individualChoice.budget;
       })
       .catch((e: unknown) => {

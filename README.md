@@ -42,10 +42,15 @@ buttons. The site reloads itself once shortly after first load, so if the button
   item so you can pick. Nothing is ordered until you confirm. The comparison is only hidden, not closed: a
   **Back to comparison** pill at the bottom right restores it with your filters, view and sort intact.
   Escape, clicking outside, or **Minimise** also hide it; **Close** discards it.
+- Future days are shown for browsing, but the site itself locks Add/Choose until each order's own choice
+  window opens (shown on the list as "Order is not open"). Choose respects that lock: it is greyed out with a
+  **not open yet** badge and a tooltip giving the open time, and refuses even if triggered another way. It
+  never falls back to a raw page navigation to get around a button the list doesn't offer, since that would
+  bypass the same restriction the site's UI is enforcing.
 - The header shows the day's subsidised budget, what you have already spent (both slots share one budget) and
   what remains; prices above the remaining amount are red with the top-up in the tooltip. The subsidy is one
   budget for the whole day, shared across both slots and every vendor, used up in the order you confirm.
-  Once it is gone the site offers a Pay button (card payment) instead of Confirm Choice, and the header says so.
+  Once it is gone the site offers a Pay button (card payment) instead of Confirm Choice.
 - **Copy as Markdown** copies the items currently shown, grouped by slot and provider with price, kcal, diets,
   allergens, ingredients and budget context, ready to paste into an LLM.
 - Prices above the day's budget are red. Items you have already chosen are marked. Sold-out providers are listed
@@ -59,7 +64,9 @@ The page's own JSON API is called with the session cookies:
   `eaterOptions` (vendors) for each. Days in the DOM are matched to carts via the `Order <humanId>` labels.
 - `GET /api/individual-choice/<eaterOption.orderId>/summary` returns a vendor's full menu, including
   `dietaries`, `possibleDietaries` (custom items), `allergens`, `kcal`, section `hidden` flags and per-location
-  `availability`. It works even before the choice window opens.
+  `availability`. It answers even before the choice window opens (`Cart.choiceOpenTime`), which is what lets
+  Compare show future days at all — but Choose deliberately does not use that early access to add items,
+  since the site's own UI locks that until the window opens.
 
 Item types: `SingleItem`, `CustomItem` (option sections) and `ItemBundle` (choice groups). For bundles the best
 case is computed as the intersection across groups of the union within each group. The API's `possibleDietaries`
@@ -82,13 +89,18 @@ drives the site's own UI up to the confirm button so the user stays in control.
 ## Development
 
 ```
-npm run login       # opens a headed browser; log in once. Saves a persistent profile under auth/ (git-ignored)
-npm run build       # bundles src/ into dist/bookmarklet.js, dist/bookmarklet.url.txt and dist/install.html
+npm run login          # opens a headed browser; log in once. Saves a persistent profile under auth/ (git-ignored)
+npm run check-session  # read-only: is the saved profile still logged in? exits 1 if not
+npm run build          # bundles src/ into dist/bookmarklet.js, dist/bookmarklet.url.txt and dist/install.html
 npm run typecheck
-npm run test:unit   # pure logic tests (filtering, sorting, flattening)
-npm run test:live   # drives the real site with the saved profile, headed (Cloudflare blocks headless Chromium)
-npm run preview     # injects the built bookmarklet on the real page and screenshots the overlay to auth/
+npm run test:unit      # pure logic tests (filtering, sorting, flattening)
+npm run test:live      # drives the real site with the saved profile, headed (Cloudflare blocks headless Chromium)
+npm run preview        # injects the built bookmarklet on the real page and screenshots the overlay to auth/
 ```
+
+Corporate SSO sessions expire; `npm run login` waits up to 15 minutes for you to complete it and only reports
+success once it actually sees the meals list logged in (it used to print "Saved" unconditionally on timeout —
+fixed after that produced a false positive during unattended testing).
 
 Layout:
 

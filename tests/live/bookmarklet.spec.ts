@@ -208,6 +208,34 @@ test.describe('bookmarklet on /my-meals', () => {
     await expect(page.locator('#jefb-compare-toast .t')).toContainText('Copied');
   });
 
+  test('a day the site itself has not opened for choosing shows disabled Choose buttons and a badge', async () => {
+    // The previous test leaves its overlay open, covering the page; close it via its own button (proper
+    // teardown) before interacting with the underlying day list.
+    const stale = page.locator('#jefb-compare-host');
+    if ((await stale.count()) > 0) await stale.locator('button.close').click();
+
+    // Find this from the real page state (the site's own "Order is not open" text), not a guess at which
+    // day that will be, so the test stays valid as the account's rolling choice windows move on.
+    await ensureInjected();
+    const notOpenDay = page.locator('li[test-id="days"]', { has: page.locator('text=/Order is not open/i') }).first();
+    test.skip((await notOpenDay.count()) === 0, 'no not-open-yet day currently visible on this account');
+
+    await notOpenDay.locator('[data-jefb-compare-button]').first().click();
+    const overlay = page.locator('#jefb-compare-host');
+    await expect(overlay.locator('.status')).not.toContainText('loading', { timeout: 30_000 });
+    if ((await overlay.locator('table').count()) === 0) await overlay.locator('.seg label', { hasText: 'Table' }).click();
+
+    const notOpenButtons = overlay.locator('button.choose[data-choice-open="0"]');
+    expect(await notOpenButtons.count()).toBeGreaterThan(0);
+    await expect(notOpenButtons.first()).toBeDisabled();
+    await expect(overlay.locator('.badge.warn', { hasText: 'not open yet' }).first()).toBeVisible();
+
+    await overlay.locator('button.copy').click();
+    const md = await page.evaluate(() => navigator.clipboard.readText());
+    expect(md).toMatch(/not open for choosing until/);
+    await overlay.locator('button.close').click();
+  });
+
   test('type chips, within-budget toggle, favourites and lightbox', async () => {
     const overlay = await ensureOverlay();
     await overlay.locator('.seg label', { hasText: 'Match any' }).click();

@@ -56,6 +56,19 @@ export function formatTime(iso: string): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/**
+ * Whether the site's own choice window has opened. The list page disables Add/Choose before this time even
+ * though the underlying API will still answer requests, and we deliberately keep to that restriction rather
+ * than using the API access to bypass it.
+ */
+export function isChoiceOpen(choiceOpenTime: string, now: Date = new Date()): boolean {
+  return now.getTime() >= new Date(choiceOpenTime).getTime();
+}
+
+export function formatOpensAt(iso: string): string {
+  return new Date(iso).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 /** Group non-cancelled carts by local delivery day. */
 export function cartsByDay(carts: CartsResponse): Map<string, Cart[]> {
   const out = new Map<string, Cart[]>();
@@ -131,12 +144,13 @@ function allergenList(item: BaseItem): string[] {
     .map(([k]) => k.replace(/([A-Z])/g, ' $1').toLowerCase());
 }
 
-/** Flatten one vendor's summary into rows. */
-export function flattenSummary(summary: Summary, option: EaterOption, slot: string, color = VENDOR_COLORS[0]): Row[] {
+/** Flatten one vendor's summary into rows. `choiceOpenTime` defaults to the epoch, i.e. always open. */
+export function flattenSummary(summary: Summary, option: EaterOption, slot: string, color = VENDOR_COLORS[0], choiceOpenTime = '1970-01-01T00:00:00.000Z'): Row[] {
   const it = summary.item;
   const locId = it.selectedVendorLocation?.id ?? null;
   const rows: Row[] = [];
   const chosenIds = new Set(option.itemIds ?? []);
+  const choiceOpen = isChoiceOpen(choiceOpenTime);
   for (const sec of it.individualChoice.menuContent.sections) {
     if (sec.hidden) continue;
     for (const item of sec.items) {
@@ -161,6 +175,8 @@ export function flattenSummary(summary: Summary, option: EaterOption, slot: stri
         vendorLogo: option.vendorImage?.[0]?.thumbnail ?? null,
         vendorColor: color,
         vendorChosen: option.eaterCartStatus === 'confirmed' || (option.itemIds?.length ?? 0) > 0,
+        choiceOpen,
+        choiceOpensAt: choiceOpenTime,
         orderId: option.orderId,
         orderHumanId: option.orderHumanId,
         slot,
@@ -318,6 +334,7 @@ export function toMarkdown(rows: Row[], meta: MarkdownMeta): string {
       const notes: string[] = [];
       if (v.capacity === 'ALMOST_SOLD_OUT') notes.push('almost sold out');
       if (v.capacity === 'SOLD_OUT') notes.push('sold out');
+      if (!v.choiceOpen) notes.push(`not open for choosing until ${formatOpensAt(v.choiceOpensAt)}`);
       out.push(`### ${v.vendorName}${v.vendorLocationName ? ` · ${v.vendorLocationName}` : ''} (${items.length} items${notes.length ? `, ${notes.join(', ')}` : ''})`, '');
       for (const r of items) {
         const lim = meta.remaining ?? meta.budget;
