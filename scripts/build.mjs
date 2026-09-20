@@ -35,8 +35,6 @@ fs.writeFileSync(
   `<!doctype html><meta charset="utf-8"><title>Just Eat for Business UserScript</title>
 <style>body{font:15px/1.5 system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 16px}a.bm{display:inline-block;padding:10px 16px;background:#ff8000;color:#fff;border-radius:8px;text-decoration:none;font-weight:700}textarea{width:100%;height:120px;font:12px monospace}</style>
 <h1>Just Eat for Business UserScript</h1>
-<p>Compare menus across every provider for a day. Installed as a bookmarklet, since it needs to work in
-locked-down browsers that block real browser extensions.</p>
 <p>Drag this link to your bookmarks bar: <a class="bm" href="${escapeHtml(url)}">Compare menus</a></p>
 <p>If dragging is blocked, create a new bookmark manually and paste this as its URL:</p>
 <textarea readonly onclick="this.select()">${escapeHtml(url)}</textarea>
