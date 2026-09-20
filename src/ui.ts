@@ -1,5 +1,5 @@
 // Comparison overlay. Rendered into a shadow root so the host page's CSS cannot interfere.
-import { fetchCart, fetchSummary } from './api';
+import { fetchCart, fetchCarts, fetchSummary } from './api';
 import {
   applyFilter,
   defaultFilter,
@@ -290,6 +290,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   const show = () => {
     backdrop.hidden = false;
     pill.hidden = true;
+    void refreshSpent();
     render();
   };
   const onKey = (e: KeyboardEvent) => {
@@ -740,9 +741,11 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   render();
   document.body.append(host);
 
-  // What has already been ordered today (both slots share one budget).
-  for (const cart of opts.carts) {
-    for (const o of cart.eaterOptions) {
+  // What has already been ordered today (both slots share one budget). `eaterOptions` only need orderId,
+  // vendorName, itemNames and eaterCartStatus/itemIds — the shape returned by both the initial carts fetch
+  // and a later refetch in refreshSpent().
+  function loadSpend(eaterOptions: EaterOption[]): void {
+    for (const o of eaterOptions) {
       if (o.eaterCartStatus !== 'confirmed' && !(o.itemIds?.length)) continue;
       fetchCart(o.orderId)
         .then((c) => {
@@ -755,6 +758,24 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
           render();
         });
     }
+  }
+  loadSpend(opts.carts.flatMap((c) => c.eaterOptions));
+
+  // opts.carts is a snapshot taken when the day's list was rendered, so it goes stale the moment the user
+  // confirms an order on a provider page and comes back via the "Back to comparison" pill. Re-fetch the
+  // carts fresh whenever the overlay reappears, so "remaining" reflects what was actually just chosen
+  // without needing a full page reload.
+  async function refreshSpent(): Promise<void> {
+    state.spent = [];
+    render();
+    let fresh;
+    try {
+      fresh = await fetchCarts();
+    } catch {
+      return; // keep whatever the last known state was rather than crash
+    }
+    const orderIds = new Set(options.map((o) => o.option.orderId));
+    loadSpend(fresh.items.flatMap((c) => c.eaterOptions).filter((o) => orderIds.has(o.orderId)));
   }
 
   // Load all menus concurrently, rendering as each arrives.

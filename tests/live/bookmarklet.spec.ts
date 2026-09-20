@@ -208,6 +208,28 @@ test.describe('bookmarklet on /my-meals', () => {
     await expect(page.locator('#jefb-compare-toast .t')).toContainText('Copied');
   });
 
+  test('reopening the comparison via the pill re-fetches carts, so remaining budget can reflect a new order without a page reload', async () => {
+    // opts.carts is a snapshot taken when the day list was rendered, so it goes stale once the user
+    // confirms an order on a provider page and comes back. We can't actually confirm a real order in a
+    // test (never place orders from this profile), so this checks the fix's actual mechanism instead: a
+    // fresh GET /api/eaters/me/carts fires every time the overlay is brought back via the pill, which is
+    // what lets "remaining" pick up a just-confirmed order.
+    const overlay = await ensureOverlay();
+    let cartsRequests = 0;
+    const onRequest = (req: import('@playwright/test').Request) => {
+      if (/\/api\/eaters\/me\/carts\?/.test(req.url())) cartsRequests++;
+    };
+    page.on('request', onRequest);
+
+    await page.keyboard.press('Escape'); // hide()
+    await expect(overlay.locator('.pill')).toBeVisible();
+    await overlay.locator('.pill button.primary').click(); // show() -> should trigger a fresh carts fetch
+    await expect(overlay.locator('.backdrop')).toBeVisible();
+    await expect.poll(() => cartsRequests).toBeGreaterThan(0);
+
+    page.off('request', onRequest);
+  });
+
   test('a day the site has not opened for choosing has a disabled Compare menus button', async () => {
     // The previous test leaves its overlay open, covering the page; close it via its own button (proper
     // teardown) before interacting with the underlying day list.
