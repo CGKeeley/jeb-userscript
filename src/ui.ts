@@ -8,6 +8,8 @@ import {
   DIET_SHORT,
   flattenSummary,
   formatPrice,
+  localDayKey,
+  pruneMaxPriceByDay,
   remainingBudget,
   sortRows,
   toMarkdown,
@@ -16,6 +18,7 @@ import {
   favKey,
   FOOD_KINDS,
   FOOD_KIND_LABELS,
+  type MaxPriceByDay,
   type Spend,
   type FilterState,
   type SortKey,
@@ -161,12 +164,14 @@ function safeSet(k: string, v: string): void {
 
 const FILTERS_KEY = 'jefb-compare-filters';
 const FAVS_KEY = 'jefb-compare-favs';
+// Max price is a per-day cap ("only show me things under £3 today"), not a lasting preference, so it is
+// stored separately, keyed by day, rather than in FILTERS_KEY which is shared across every day.
+const MAXPRICE_KEY = 'jefb-compare-maxprice-by-day';
 
 /** The parts of the filter worth remembering between runs. Vendors and slots are stored by name/label. */
 interface SavedFilters {
   diets: DietKey[];
   mode: 'any' | 'all';
-  maxPrice: number | null;
   withinBudget: boolean;
   favouritesOnly: boolean;
   kindsOff: FoodKind[];
@@ -188,6 +193,17 @@ function loadFavs(): Set<string> {
   } catch {
     return new Set();
   }
+}
+
+/** Loads the saved max-price-per-day map, already pruned of days before `todayKey`. */
+function loadMaxPriceByDay(todayKey: string): MaxPriceByDay {
+  let map: MaxPriceByDay;
+  try {
+    map = JSON.parse(safeGet(MAXPRICE_KEY) ?? '{}') as MaxPriceByDay;
+  } catch {
+    map = {};
+  }
+  return pruneMaxPriceByDay(map, todayKey);
 }
 
 function checkbox(label: string, checked: boolean, onChange: (v: boolean) => void, cls = 'chk', title = ''): HTMLLabelElement {
@@ -231,11 +247,18 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
   const slotNames = [...new Set(options.map((o) => o.slot))];
 
+  // Which day this comparison is for, so the max-price cap can be scoped to it (both slots share one day).
+  // Pruning must use the real calendar day, not dayKey: dayKey can be a future day, and using it as the
+  // cutoff would wrongly drop an earlier (but still current-or-future) day's saved cap.
+  const dayKey = localDayKey(opts.carts[0].requestedDeliveryDate);
+  const todayKey = localDayKey(new Date().toISOString());
+  const maxPriceByDay = loadMaxPriceByDay(todayKey);
+
   const saved = loadSaved();
   const initial = defaultFilter();
   initial.diets = new Set((saved.diets ?? []).filter((k): k is DietKey => DIET_KEYS.includes(k)));
   initial.mode = saved.mode === 'all' ? 'all' : 'any';
-  initial.maxPrice = typeof saved.maxPrice === 'number' ? saved.maxPrice : null;
+  initial.maxPrice = maxPriceByDay[dayKey] ?? null;
   initial.withinBudget = !!saved.withinBudget;
   initial.favouritesOnly = !!saved.favouritesOnly;
   initial.kinds = new Set(FOOD_KINDS.filter((k) => !(saved.kindsOff ?? []).includes(k)));
@@ -499,7 +522,6 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     const data: SavedFilters = {
       diets: [...f.diets],
       mode: f.mode,
-      maxPrice: f.maxPrice,
       withinBudget: f.withinBudget,
       favouritesOnly: f.favouritesOnly,
       kindsOff: FOOD_KINDS.filter((k) => !f.kinds!.has(k)),
@@ -507,6 +529,12 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
       slotsOff: slotNames.filter((s) => f.slots && !f.slots.has(s)),
     };
     safeSet(FILTERS_KEY, JSON.stringify(data));
+
+    // Max price is scoped to this day only, and past days are dropped so this can't grow forever.
+    const map = loadMaxPriceByDay(todayKey); // already pruned relative to the real calendar day
+    if (f.maxPrice != null) map[dayKey] = f.maxPrice;
+    else delete map[dayKey];
+    safeSet(MAXPRICE_KEY, JSON.stringify(map));
   }
 
   function toggleFav(r: Row): void {

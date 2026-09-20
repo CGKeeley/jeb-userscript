@@ -69,6 +69,20 @@ export function formatOpensAt(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+/** A max-price filter value saved per day (see saveMaxPriceForDay), keyed by localDayKey(). */
+export type MaxPriceByDay = Record<string, number>;
+
+/**
+ * Drops entries for days before `todayKey`, so the map saved in localStorage can't grow without bound as
+ * days pass. `todayKey` and the map's keys are both `localDayKey()` strings ("YYYY-MM-DD"), which compare
+ * correctly as plain strings.
+ */
+export function pruneMaxPriceByDay(map: MaxPriceByDay, todayKey: string): MaxPriceByDay {
+  const out: MaxPriceByDay = {};
+  for (const [k, v] of Object.entries(map)) if (k >= todayKey) out[k] = v;
+  return out;
+}
+
 /** Group non-cancelled carts by local delivery day. */
 export function cartsByDay(carts: CartsResponse): Map<string, Cart[]> {
   const out = new Map<string, Cart[]>();

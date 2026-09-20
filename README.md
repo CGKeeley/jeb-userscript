@@ -27,8 +27,10 @@ buttons. The site reloads itself once shortly after first load, so if the button
 - Type chips (Mains, Sides, Desserts, Other), a **Within budget** toggle that hides anything needing a top-up,
   and a **★ Favourites** toggle. Star any item (tile corner or table row); favourites are remembered by
   vendor and dish name, so they carry across days.
-- Filters (diets, mode, type, providers by name, slots, max price, within budget, favourites) persist in the
-  browser between runs of the bookmarklet. Click a photo to see it large; Escape closes it.
+- Filters (diets, mode, type, providers by name, slots, within budget, favourites) persist in the browser
+  between runs of the bookmarklet. Max price is saved per day instead — a £3 cap today doesn't carry over to
+  tomorrow's comparison — and old days' caps are dropped automatically so the saved data doesn't grow forever.
+  Click a photo to see it large; Escape closes it.
 - Provider checkboxes in the filter bar: all on by default; untick to drop a provider (OR across ticked ones).
 - Sorted by price descending by default. Click a table header or use the sort dropdown.
 - Diet filter: Vegetarian, Vegan, Pescatarian, Gluten free, Dairy free, Nut free, Halal.

@@ -324,6 +324,27 @@ test.describe('bookmarklet on /my-meals', () => {
     await again.locator('input.num').fill('');
   });
 
+  test('max price is scoped to the day it was set on, not shared with other days', async () => {
+    const overlay = await ensureOverlay(); // first day
+    await overlay.locator('input.num').fill('3');
+    await overlay.locator('button.close').click();
+
+    // Find a second, distinct, currently-open day (desktop button only — the mobile clone duplicates it).
+    const openDays = page.locator('.my-meals-list-layout__delivery-date-desktop [data-jefb-compare-button]:not([disabled])');
+    test.skip((await openDays.count()) < 2, 'need at least two open days to check the cap does not leak between them');
+    await openDays.nth(1).click();
+    const otherOverlay = page.locator('#jefb-compare-host');
+    await expect(otherOverlay.locator('.status')).not.toContainText('loading', { timeout: 30_000 });
+    if ((await otherOverlay.locator('table').count()) === 0) await otherOverlay.locator('.seg label', { hasText: 'Table' }).click();
+    await expect(otherOverlay.locator('input.num')).toHaveValue('');
+    await otherOverlay.locator('button.close').click();
+
+    // Reopening the first day still has its own cap.
+    const again = await ensureOverlay();
+    await expect(again.locator('input.num')).toHaveValue('3');
+    await again.locator('input.num').fill('');
+  });
+
   test('search and sort by name work; Escape closes', async () => {
     const overlay = await ensureOverlay();
     await overlay.locator('.seg label', { hasText: 'Match any' }).click();

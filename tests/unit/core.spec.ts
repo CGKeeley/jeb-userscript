@@ -14,6 +14,7 @@ import {
   formatOpensAt,
   formatPrice,
   isChoiceOpen,
+  pruneMaxPriceByDay,
   remainingBudget,
   toMarkdown,
   VENDOR_COLORS,
@@ -275,6 +276,13 @@ test('isChoiceOpen compares against the given time, open at exactly the open mom
   expect(isChoiceOpen('2026-09-10T08:00:00Z', now)).toBe(true);
   expect(isChoiceOpen('2026-09-10T09:00:00Z', now)).toBe(true);
   expect(isChoiceOpen('2026-09-10T09:00:01Z', now)).toBe(false);
+});
+
+test('pruneMaxPriceByDay drops past days and keeps today and future days', () => {
+  const map = { '2026-09-06': 12, '2026-09-07': 15, '2026-09-08': 3, '2026-09-20': 5 };
+  expect(pruneMaxPriceByDay(map, '2026-09-08')).toEqual({ '2026-09-08': 3, '2026-09-20': 5 });
+  expect(pruneMaxPriceByDay(map, '2026-09-21')).toEqual({});
+  expect(pruneMaxPriceByDay({}, '2026-09-08')).toEqual({});
 });
 
 test('formatOpensAt renders a weekday and time', () => {
