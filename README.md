@@ -1,12 +1,14 @@
-# Just Eat for Business: Compare menus bookmarklet
+# Just Eat for Business UserScript
 
-A single self-contained bookmarklet for `app.business.just-eat.co.uk/my-meals` (the rebranded City Pantry
-"individual choice" site). It adds a **Compare menus** button next to each upcoming day. Clicking it fetches the
-menu of every provider on that day, across both lunch slots, and shows them in one sortable, filterable table.
+A single self-contained script for `app.business.just-eat.co.uk/my-meals` (the rebranded City Pantry
+"individual choice" site). Delivered as a bookmarklet rather than a Tampermonkey-style UserScript, since it
+needs to run in locked-down browsers that block installing real browser extensions. It adds a **Compare menus**
+button next to each upcoming day. Clicking it fetches the menu of every provider on that day, across both
+lunch slots, and shows them in one sortable, filterable table.
 
 ## Install
 
-The latest build is published at https://cgkeeley.github.io/just-eat-bookmarklet/ — drag the link from there. To build locally instead:
+The latest build is published at https://cgkeeley.github.io/jeb-userscript/ — drag the link from there. To build locally instead:
 
 1. `npm install && npm run build`
 2. Open `dist/install.html` in a browser and drag the orange link to your bookmarks bar, or create a bookmark
@@ -14,7 +16,7 @@ The latest build is published at https://cgkeeley.github.io/just-eat-bookmarklet
 3. Go to https://app.business.just-eat.co.uk/my-meals and click the bookmark. If you click it anywhere else it
    redirects you to that page; click it again once there.
 
-The bookmarklet is about 16 KB and has no external dependencies, so it works in locked-down browsers that block
+The bookmarklet is about 38 KB and has no external dependencies, so it works in locked-down browsers that block
 third-party script hosts. Clicking it a second time is harmless: it refreshes the data and re-adds any missing
 buttons. The site reloads itself once shortly after first load, so if the buttons vanish, click the bookmark again.
 

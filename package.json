@@ -1,7 +1,7 @@
 {
-  "name": "just-eat-bookmarklet",
+  "name": "jeb-userscript",
   "version": "1.0.0",
-  "description": "",
+  "description": "Just Eat for Business UserScript: a bookmarklet that compares every provider's menu for a day, with diet filters and one-click choose",
   "main": "index.js",
   "scripts": {
     "login": "node scripts/login.mjs",
