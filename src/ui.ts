@@ -137,7 +137,7 @@ label.chk.fav:has(input:checked) { background: #f5b301; border-color: #f5b301; c
 .tile .kcal { color: #5a6272; font-size: 12px; }
 `;
 
-function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...children: (Node | string | null | undefined)[]): HTMLElementTagNameMap[K] {
+export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...children: (Node | string | null | undefined)[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === 'class') el.className = v;
