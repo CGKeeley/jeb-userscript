@@ -275,6 +275,8 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
     budget: null as number | null,
     spent: [] as Spend[],
     remaining: null as number | null,
+    // In-flight spend lookups. While > 0 the remaining budget isn't final, so "Within budget" waits.
+    pending: 0,
     view: (safeGet('jefb-compare-view') === 'table' ? 'table' : 'tiles') as 'table' | 'tiles',
   };
 
@@ -514,7 +516,9 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   };
 
   function visibleRows(): Row[] {
+    state.remaining = remainingBudget(state.budget, state.spent);
     state.filter.budgetLimit = state.remaining ?? state.budget;
+    if (state.filter.withinBudget && state.pending > 0) return [];
     return sortRows(applyFilter(state.rows, state.filter), state.sort);
   }
 
@@ -704,7 +708,7 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   }
 
   function render() {
-    const visible = visibleRows();
+    const visible = visibleRows(); // also refreshes state.remaining before anything below uses it
     saveFilters();
     syncSortSelect();
     if (state.view === 'tiles') {
@@ -716,15 +720,14 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
       tiles.remove();
       if (!table.isConnected) wrap.prepend(table);
     }
-    const loading = state.loaded < options.length;
+    const loading = state.loaded < options.length || state.pending > 0;
     status.replaceChildren(
-      `${visible.length} of ${state.rows.length} items` + (loading ? ` · loading ${state.loaded}/${options.length} providers…` : ''),
+      `${visible.length} of ${state.rows.length} items` + (state.loaded < options.length ? ` · loading ${state.loaded}/${options.length} providers…` : ''),
     );
     if (state.errors.length) status.append(' ', h('span', { class: 'err' }, `${state.errors.length} failed: ${state.errors.join('; ')}`));
     empty.textContent = loading ? 'Loading menus…' : 'No items match the current filters.';
     if (visible.length === 0) wrap.append(empty);
     else empty.remove();
-    state.remaining = remainingBudget(state.budget, state.spent);
     budgetEl.replaceChildren();
     if (state.budget != null) {
       budgetEl.append('Budget ', h('b', {}, formatPrice(state.budget)));
@@ -747,14 +750,17 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   function loadSpend(eaterOptions: EaterOption[]): void {
     for (const o of eaterOptions) {
       if (o.eaterCartStatus !== 'confirmed' && !(o.itemIds?.length)) continue;
+      state.pending++;
       fetchCart(o.orderId)
         .then((c) => {
           const cost = c.item.costBreakdown?.itemsCost?.gross ?? c.item.cartItems.reduce((a, ci) => a + ci.quantity * ci.item.price, 0);
           state.spent.push({ vendorName: o.vendorName, itemNames: c.item.cartItems.map((ci) => ci.item.name), cost });
-          render();
         })
         .catch(() => {
           state.spent.push({ vendorName: o.vendorName, itemNames: o.itemNames ?? [], cost: 0 });
+        })
+        .finally(() => {
+          state.pending--;
           render();
         });
     }
@@ -767,15 +773,18 @@ export function openOverlay(opts: OverlayOptions): HTMLElement {
   // without needing a full page reload.
   async function refreshSpent(): Promise<void> {
     state.spent = [];
+    state.pending++; // covers the carts refetch; loadSpend adds its own before this is released
     render();
-    let fresh;
     try {
-      fresh = await fetchCarts();
+      const fresh = await fetchCarts();
+      const orderIds = new Set(options.map((o) => o.option.orderId));
+      loadSpend(fresh.items.flatMap((c) => c.eaterOptions).filter((o) => orderIds.has(o.orderId)));
     } catch {
-      return; // keep whatever the last known state was rather than crash
+      /* keep whatever the last known state was rather than crash */
+    } finally {
+      state.pending--;
+      render();
     }
-    const orderIds = new Set(options.map((o) => o.option.orderId));
-    loadSpend(fresh.items.flatMap((c) => c.eaterOptions).filter((o) => orderIds.has(o.orderId)));
   }
 
   // Load all menus concurrently, rendering as each arrives.
