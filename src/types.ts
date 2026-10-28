@@ -149,3 +149,23 @@ export interface Row {
   budget: number | null;
   chosen: boolean;
 }
+
+export interface TrackingStatus {
+  title: string;
+  subtitle: string;
+}
+
+/**
+ * GET /api/eaters/order-tracking/<orderHumanId>. Works for every vendor order delivering to the eater's
+ * location, not only ones they ordered from. While en route the window is a live ~10 minute ETA; once
+ * delivered it reverts to the requested slot and completedAt is set.
+ */
+export interface OrderTracking {
+  currentStatus: TrackingStatus | null;
+  upcomingStatuses: TrackingStatus[];
+  deliveryWindowStart: string | null;
+  deliveryWindowEnd: string | null;
+  lastUpdatedAt: string | null;
+  completedAt: string | null;
+  updateMessage: string | null;
+}

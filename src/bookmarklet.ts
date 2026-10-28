@@ -1,6 +1,9 @@
-// Entry point. Adds a "Compare menus" button to each day on /my-meals and opens the comparison overlay.
+// Entry point. Adds "Compare menus" and "Lunch arrivals" buttons to each day on /my-meals, which open
+// the comparison overlay and the arrivals board.
 import { fetchCarts } from './api';
-import { cartsByDay, formatOpensAt, isChoiceOpen } from './core';
+import { boardEntries } from './arrivals';
+import { openBoard } from './board';
+import { cartsByDay, formatOpensAt, isChoiceOpen, localDayKey } from './core';
 import type { Cart, CartsResponse } from './types';
 import { openOverlay } from './ui';
 
@@ -116,40 +119,59 @@ async function injectOnce(state: State): Promise<void> {
     const dateText = day.querySelector('[test-id="deliveryDate"]')?.textContent?.trim() ?? '';
     const dowText = day.querySelector('[test-id="deliveryDayOfWeek"]')?.textContent?.trim() ?? '';
     const label = [dowText, dateText].filter(Boolean).join(' ');
-    const slotLabels = slotLabelsIn(day);
 
     // The site locks every slot on a day together (confirmed by inspecting real "not open yet" days: either
     // all vendors in the day show it, or none do), so one open cart is enough to say the day is open.
     const opensAt = [...dayCarts].map((c) => c.choiceOpenTime).sort()[0];
     const dayOpen = [...dayCarts].some((c) => isChoiceOpen(c.choiceOpenTime));
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = 'Compare menus';
-    btn.className = 'button button--secondary';
-    btn.setAttribute('data-jefb-compare-button', '1');
-    btn.style.cssText = 'margin-top:8px;padding:6px 10px;font-size:12px;white-space:nowrap;cursor:pointer;';
-    if (!dayOpen) {
-      btn.disabled = true;
-      btn.title = opensAt ? `Opens ${formatOpensAt(opensAt)}` : 'Not open yet';
-    }
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openOverlay({ dayLabel: label, carts: [...dayCarts], slotLabels: slotLabelsIn(day) });
+    addButtons(day, () => {
+      const btn = makeButton('Compare menus', 'data-jefb-compare-button');
+      if (!dayOpen) {
+        btn.disabled = true;
+        btn.title = opensAt ? `Opens ${formatOpensAt(opensAt)}` : 'Not open yet';
+      }
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openOverlay({ dayLabel: label, carts: [...dayCarts], slotLabels: slotLabelsIn(day) });
+      });
+      return btn;
     });
 
-    const desktop = day.querySelector('.my-meals-list-layout__delivery-date-desktop');
-    const mobile = day.querySelector('[test-id="mobileDeliveryDate"]');
-    if (desktop) desktop.append(btn);
-    if (mobile) mobile.append(btn.cloneNode(true) as HTMLButtonElement);
-    // cloneNode drops listeners; re-wire the mobile copy.
-    mobile?.querySelector('[data-jefb-compare-button]')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      openOverlay({ dayLabel: label, carts: [...dayCarts], slotLabels });
+    // Every upcoming day: ahead of the day the board lists who is delivering and their requested slots,
+    // and turns into a live board on the day.
+    const dayKey = localDayKey([...dayCarts][0].requestedDeliveryDate);
+    addButtons(day, () => {
+      const btn = makeButton('Lunch arrivals', 'data-jefb-arrivals-button');
+      btn.title = 'Live board of every restaurant delivering on this day and when each is due';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openBoard({ dayLabel: label, entries: boardEntries(carts, dayKey) });
+      });
+      return btn;
     });
-    if (!desktop && !mobile) day.prepend(btn);
   }
+}
+
+function makeButton(text: string, mark: string): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = text;
+  btn.className = 'button button--secondary';
+  btn.setAttribute(mark, '1');
+  btn.style.cssText = 'margin-top:8px;padding:6px 10px;font-size:12px;white-space:nowrap;cursor:pointer;';
+  return btn;
+}
+
+/** Put a fresh button (from `make`) in both the desktop and the mobile date column of a day. */
+function addButtons(day: Element, make: () => HTMLButtonElement): void {
+  const desktop = day.querySelector('.my-meals-list-layout__delivery-date-desktop');
+  const mobile = day.querySelector('[test-id="mobileDeliveryDate"]');
+  if (desktop) desktop.append(make());
+  if (mobile) mobile.append(make());
+  if (!desktop && !mobile) day.prepend(make());
 }
 
 main();
